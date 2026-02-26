@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { streamFromOpenRouter, parseSSEStream } from '@/lib/openrouter';
-import { getSystemPrompt, buildEditPrompt, buildNewPrompt } from '@/lib/prompt';
+import { getSystemPrompt, buildEditPrompt, buildNewPrompt, buildPlanPrompt } from '@/lib/prompt';
 import { logger } from '@/lib/logger';
 
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
-        const { prompt, currentHtml, blockId, mode, apiKey, model } = body;
+        const { prompt, currentHtml, blockId, mode, apiKey, model, designStylePrompt, projectContext } = body;
 
-        logger.api('/api/generate', { mode, model, hasApiKey: !!apiKey, blockId: blockId || null });
+        logger.api('/api/generate', { mode, model, hasApiKey: !!apiKey, blockId: blockId || null, hasDesignStyle: !!designStylePrompt, hasProjectContext: !!projectContext });
 
         if (!prompt) {
             logger.error('/api/generate', 'Missing prompt');
@@ -24,7 +24,6 @@ export async function POST(req: NextRequest) {
             clientKeyProvided: !!apiKey,
             clientKeyValid: !!clientKey,
             envKeyPresent: !!envKey,
-            envKeyPrefix: envKey ? envKey.slice(0, 12) + '...' : '(none)',
             usingSource: clientKey ? 'client' : envKey ? 'env' : 'none',
         });
 
@@ -36,13 +35,20 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const systemPrompt = getSystemPrompt();
+        let systemPrompt: string;
         let userPrompt: string;
 
-        if (mode === 'edit' && currentHtml && blockId) {
+        if (mode === 'plan') {
+            // Planning mode: ask LLM which sections to build
+            systemPrompt = 'You are a landing page planner. Given a user request, return a JSON array of section names to build.';
+            userPrompt = buildPlanPrompt(prompt);
+            logger.info('Plan mode');
+        } else if (mode === 'edit' && currentHtml && blockId) {
+            systemPrompt = getSystemPrompt(designStylePrompt || undefined, projectContext || undefined);
             userPrompt = buildEditPrompt(currentHtml, prompt, blockId);
             logger.info('Edit mode', { blockId, currentHtmlLength: currentHtml.length });
         } else {
+            systemPrompt = getSystemPrompt(designStylePrompt || undefined, projectContext || undefined);
             userPrompt = buildNewPrompt(prompt);
             logger.info('New block mode');
         }

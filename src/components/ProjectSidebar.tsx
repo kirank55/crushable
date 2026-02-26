@@ -3,10 +3,11 @@
 import { useState, useEffect } from 'react';
 import { Project } from '@/types';
 import { getProjects, deleteProject } from '@/lib/storage';
-import { FolderOpen, Plus, Trash2, X, Clock } from 'lucide-react';
+import { FolderOpen, Plus, Trash2, X, Clock, Sparkles } from 'lucide-react';
 
 interface ProjectSidebarProps {
     isOpen: boolean;
+    isFullScreen?: boolean;
     onClose: () => void;
     currentProjectId: string | null;
     onLoadProject: (project: Project) => void;
@@ -15,6 +16,7 @@ interface ProjectSidebarProps {
 
 export default function ProjectSidebar({
     isOpen,
+    isFullScreen = false,
     onClose,
     currentProjectId,
     onLoadProject,
@@ -51,10 +53,68 @@ export default function ProjectSidebar({
         return date.toLocaleDateString();
     };
 
+    if (!isOpen) return null;
+
+    if (isFullScreen) {
+        return (
+            <div className="project-fullscreen">
+                <div className="project-fullscreen-inner">
+                    <div className="project-fullscreen-header">
+                        <div className="project-fullscreen-brand">
+                            <Sparkles size={28} strokeWidth={1.5} />
+                            <h1>Crushable</h1>
+                        </div>
+                        <p className="project-fullscreen-sub">AI Landing Page Builder</p>
+                    </div>
+
+                    <div className="project-fullscreen-actions">
+                        <button onClick={() => { onNewProject(); onClose(); }} className="new-project-big-btn">
+                            <Plus size={20} />
+                            <span>New Project</span>
+                        </button>
+                    </div>
+
+                    {projects.length > 0 && (
+                        <div className="project-fullscreen-list">
+                            <h3>Recent Projects</h3>
+                            <div className="project-grid">
+                                {projects.map((project) => (
+                                    <button
+                                        key={project.id}
+                                        onClick={() => { onLoadProject(project); onClose(); }}
+                                        className={`project-card ${project.id === currentProjectId ? 'active' : ''}`}
+                                    >
+                                        <div className="project-card-info">
+                                            <span className="project-card-name">{project.name}</span>
+                                            <span className="project-card-meta">
+                                                <Clock size={12} />
+                                                {formatDate(project.updatedAt)}
+                                                <span className="project-card-blocks">
+                                                    {project.blocks.length} section{project.blocks.length !== 1 ? 's' : ''}
+                                                </span>
+                                            </span>
+                                        </div>
+                                        <button
+                                            onClick={(e) => handleDelete(project.id, e)}
+                                            className="project-delete"
+                                            title="Delete project"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
     return (
         <>
-            {isOpen && <div className="sidebar-overlay" onClick={onClose} />}
-            <div className={`project-sidebar ${isOpen ? 'open' : ''}`}>
+            <div className="sidebar-overlay" onClick={onClose} />
+            <div className={`project-sidebar open`}>
                 <div className="sidebar-header">
                     <div className="sidebar-title">
                         <FolderOpen size={18} />

@@ -13,6 +13,8 @@ export function usePageState() {
     const [isDirty, setIsDirty] = useState(false);
     const [projectName, setProjectName] = useState('Untitled Project');
     const [versions, setVersions] = useState<Version[]>([]);
+    const [designStyle, setDesignStyleState] = useState<string | undefined>(undefined);
+    const [previousBlocks, setPreviousBlocks] = useState<Block[] | null>(null);
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     // Load last project on mount
@@ -25,12 +27,13 @@ export function usePageState() {
                 setProjectId(project.id);
                 setProjectName(project.name);
                 setVersions(project.versions || []);
-                logger.action('Loaded last project', { id: project.id, name: project.name });
+                setDesignStyleState(project.designStyle);
+                logger.action('Loaded last project', { id: project.id, name: project.name, designStyle: project.designStyle });
             }
         }
     }, []);
 
-    // Auto-save debounce (30s)
+    // Auto-save every 2 seconds when dirty
     useEffect(() => {
         if (!isDirty || !currentProjectId) return;
 
@@ -40,7 +43,7 @@ export function usePageState() {
 
         saveTimeoutRef.current = setTimeout(() => {
             handleSave();
-        }, 30000);
+        }, 2000);
 
         return () => {
             if (saveTimeoutRef.current) {
@@ -52,17 +55,30 @@ export function usePageState() {
 
     const addBlock = useCallback((block: Block) => {
         logger.action('addBlock', { blockId: block.id, label: block.label });
-        setBlocks((prev) => [...prev, block]);
+        setBlocks((prev) => {
+            setPreviousBlocks([...prev]);
+            return [...prev, block];
+        });
         setIsDirty(true);
     }, []);
 
     const updateBlock = useCallback((id: string, html: string) => {
         logger.action('updateBlock', { blockId: id });
-        setBlocks((prev) =>
-            prev.map((b) => (b.id === id ? { ...b, html } : b))
-        );
+        setBlocks((prev) => {
+            setPreviousBlocks([...prev]);
+            return prev.map((b) => (b.id === id ? { ...b, html } : b));
+        });
         setIsDirty(true);
     }, []);
+
+    const undo = useCallback(() => {
+        if (previousBlocks) {
+            logger.action('undo');
+            setBlocks(previousBlocks);
+            setPreviousBlocks(null);
+            setIsDirty(true);
+        }
+    }, [previousBlocks]);
 
     const removeBlock = useCallback((id: string) => {
         logger.action('removeBlock', { blockId: id });
@@ -84,6 +100,12 @@ export function usePageState() {
     const reorderBlocks = useCallback((newBlocks: Block[]) => {
         logger.action('reorderBlocks');
         setBlocks(newBlocks);
+        setIsDirty(true);
+    }, []);
+
+    const setDesignStyle = useCallback((style: string) => {
+        logger.action('setDesignStyle', { style });
+        setDesignStyleState(style);
         setIsDirty(true);
     }, []);
 
@@ -117,14 +139,15 @@ export function usePageState() {
             name: projectName,
             blocks,
             versions,
+            designStyle,
             updatedAt: Date.now(),
         };
         saveProject(project);
         setProjectId(id);
         setCurrentProjectId(id);
         setIsDirty(false);
-        logger.action('handleSave', { projectId: id, projectName });
-    }, [currentProjectId, projectName, blocks, versions]);
+        logger.action('handleSave (auto)', { projectId: id, projectName });
+    }, [currentProjectId, projectName, blocks, versions, designStyle]);
 
     const handleLoad = useCallback((project: Project) => {
         logger.action('handleLoad', { id: project.id, name: project.name });
@@ -132,6 +155,7 @@ export function usePageState() {
         setProjectId(project.id);
         setProjectName(project.name);
         setVersions(project.versions || []);
+        setDesignStyleState(project.designStyle);
         setCurrentProjectId(project.id);
         setSelectedBlockId(null);
         setIsDirty(false);
@@ -144,6 +168,7 @@ export function usePageState() {
         setProjectId(id);
         setProjectName('Untitled Project');
         setVersions([]);
+        setDesignStyleState(undefined);
         setCurrentProjectId(id);
         setSelectedBlockId(null);
         setIsDirty(false);
@@ -175,12 +200,15 @@ export function usePageState() {
         isDirty,
         projectName,
         versions,
+        designStyle,
+        canUndo: previousBlocks !== null,
         addBlock,
         updateBlock,
         removeBlock,
         selectBlock,
         clearSelection,
         reorderBlocks,
+        setDesignStyle,
         createVersionSnapshot,
         loadVersion,
         handleSave,
@@ -189,5 +217,6 @@ export function usePageState() {
         handleRename,
         clearAll,
         importBlocks,
+        undo,
     };
 }

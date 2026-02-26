@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Block } from '@/types';
 import { Eye, Code } from 'lucide-react';
 
@@ -57,8 +57,32 @@ ${blocks.length === 0 ? `
 </html>`;
   }, [blocks]);
 
-  const codeContent = useMemo(() => {
-    return blocks.map((b) => b.html).join('\n\n');
+  // Full HTML document for code view
+  const fullDocumentCode = useMemo(() => {
+    if (blocks.length === 0) return '<!-- No sections yet. Start chatting to build your page. -->';
+
+    const sectionsHtml = blocks.map((b) => b.html).join('\n\n');
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Landing Page</title>
+  <script src="https://cdn.tailwindcss.com"><\/script>
+  <script src="https://unpkg.com/lucide@latest"><\/script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; margin: 0; }
+  </style>
+</head>
+<body>
+${sectionsHtml}
+<script>
+  lucide.createIcons();
+<\/script>
+</body>
+</html>`;
   }, [blocks]);
 
   if (!mounted) {
@@ -102,7 +126,7 @@ ${blocks.length === 0 ? `
         </div>
       ) : (
         <div className="code-view">
-          <pre><code>{codeContent || '// No sections yet. Start chatting to build your page.'}</code></pre>
+          <pre><code>{fullDocumentCode}</code></pre>
         </div>
       )}
     </div>

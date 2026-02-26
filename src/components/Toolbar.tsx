@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Download, Save, Settings, FolderOpen, Plus, Trash2, Zap, Check } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Download, Save, Settings, FolderOpen, Plus, Trash2, Check, Upload, Cpu } from 'lucide-react';
 import { downloadHTML } from '@/lib/export';
 import { getApiKey, getModel } from '@/lib/storage';
-import { Block, AVAILABLE_MODELS } from '@/types';
+import { Block, getAvailableModels } from '@/types';
+import { readFileAsText, parseImportedHtml } from '@/lib/import';
+import { logger } from '@/lib/logger';
 
 interface ToolbarProps {
     blocks: Block[];
@@ -16,6 +18,7 @@ interface ToolbarProps {
     onOpenProjects: () => void;
     onNewProject: () => void;
     onClearAll: () => void;
+    onImportBlocks: (blocks: Block[]) => void;
 }
 
 export default function Toolbar({
@@ -28,21 +31,23 @@ export default function Toolbar({
     onOpenProjects,
     onNewProject,
     onClearAll,
+    onImportBlocks,
 }: ToolbarProps) {
     const [isEditing, setIsEditing] = useState(false);
     const [editName, setEditName] = useState(projectName);
     const [modelLabel, setModelLabel] = useState('');
-    const [hasKey, setHasKey] = useState(false);
     const [showSaved, setShowSaved] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         const model = getModel();
-        const info = AVAILABLE_MODELS.find((m) => m.id === model);
+        const models = getAvailableModels();
+        const info = models.find((m) => m.id === model);
         setModelLabel(info?.label || model);
-        setHasKey(!!getApiKey());
     }, []);
 
     const handleSave = () => {
+        logger.action('Toolbar save');
         onSave();
         setShowSaved(true);
         setTimeout(() => setShowSaved(false), 2000);
@@ -53,6 +58,40 @@ export default function Toolbar({
             onRename(editName.trim());
         }
         setIsEditing(false);
+    };
+
+    const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        logger.action('Toolbar import', { fileName: file.name });
+
+        const confirmed = window.confirm(
+            '⚠️ Only import code generated with Crushable.\n\nImporting code from other sources may not work correctly. Continue?'
+        );
+
+        if (!confirmed) {
+            if (fileInputRef.current) fileInputRef.current.value = '';
+            return;
+        }
+
+        try {
+            const html = await readFileAsText(file);
+            const importedBlocks = parseImportedHtml(html);
+
+            if (importedBlocks.length === 0) {
+                alert('No Crushable sections found in this file. Make sure the file contains <section data-block-id="..."> elements.');
+                return;
+            }
+
+            onImportBlocks(importedBlocks);
+            logger.action('Import successful', { blocksImported: importedBlocks.length });
+        } catch (err) {
+            logger.error('Import', err);
+            alert('Failed to import file.');
+        }
+
+        if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
     return (
@@ -85,15 +124,27 @@ export default function Toolbar({
             </div>
 
             <div className="toolbar-center">
-                <div className={`model-badge ${hasKey ? 'premium' : 'free'}`}>
-                    <Zap size={12} />
-                    {hasKey ? modelLabel : 'Free Mode'}
-                </div>
+                <button onClick={onOpenSettings} className="model-badge-btn" title="Models">
+                    <Cpu size={12} />
+                    Models
+                </button>
             </div>
 
             <div className="toolbar-right">
                 <button onClick={onNewProject} className="toolbar-btn" title="New Project">
                     <Plus size={18} />
+                </button>
+
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".html,.htm"
+                    onChange={handleImport}
+                    style={{ display: 'none' }}
+                />
+                <button onClick={() => fileInputRef.current?.click()} className="toolbar-btn" title="Import HTML">
+                    <Upload size={18} />
+                    <span className="btn-label">Import</span>
                 </button>
 
                 <button onClick={handleSave} className="toolbar-btn save-btn" title="Save">

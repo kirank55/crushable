@@ -1,20 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { streamFromOpenRouter, parseSSEStream } from '@/lib/openrouter';
 import { getSystemPrompt, buildEditPrompt, buildNewPrompt } from '@/lib/prompt';
+import { logger } from '@/lib/logger';
 
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
         const { prompt, currentHtml, blockId, mode, apiKey, model } = body;
 
+        logger.api('/api/generate', { mode, model, hasApiKey: !!apiKey, blockId: blockId || null });
+
         if (!prompt) {
+            logger.error('/api/generate', 'Missing prompt');
             return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
         }
 
-        // Use client-provided key, fall back to server env key
-        const resolvedKey = apiKey || process.env.OPENROUTER_API_KEY || '';
+        // Use client-provided key if valid, fall back to server env key
+        const envKey = process.env.OPENROUTER_API_KEY || '';
+        const clientKey = apiKey && typeof apiKey === 'string' && apiKey.startsWith('sk-') ? apiKey : '';
+        const resolvedKey = clientKey || envKey;
+
+        logger.info('API key resolution', {
+            clientKeyProvided: !!apiKey,
+            clientKeyValid: !!clientKey,
+            envKeyPresent: !!envKey,
+            envKeyPrefix: envKey ? envKey.slice(0, 12) + '...' : '(none)',
+            usingSource: clientKey ? 'client' : envKey ? 'env' : 'none',
+        });
 
         if (!resolvedKey) {
+            logger.error('/api/generate', 'No API key configured');
             return NextResponse.json(
                 { error: 'No API key configured. Add your OpenRouter key in Settings (⚙️) or set OPENROUTER_API_KEY in .env.local' },
                 { status: 401 }
@@ -26,9 +41,14 @@ export async function POST(req: NextRequest) {
 
         if (mode === 'edit' && currentHtml && blockId) {
             userPrompt = buildEditPrompt(currentHtml, prompt, blockId);
+            logger.info('Edit mode', { blockId, currentHtmlLength: currentHtml.length });
         } else {
             userPrompt = buildNewPrompt(prompt);
+            logger.info('New block mode');
         }
+
+        logger.prompt('system', systemPrompt);
+        logger.prompt('user', userPrompt);
 
         const rawStream = await streamFromOpenRouter({
             prompt: userPrompt,
@@ -41,10 +61,13 @@ export async function POST(req: NextRequest) {
         const reader = textStream.getReader();
         const encoder = new TextEncoder();
 
+        logger.stream('Starting response stream');
+
         const responseStream = new ReadableStream({
             async pull(controller) {
                 const { done, value } = await reader.read();
                 if (done) {
+                    logger.stream('Response stream complete');
                     controller.close();
                     return;
                 }
@@ -60,6 +83,7 @@ export async function POST(req: NextRequest) {
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error';
+        logger.error('/api/generate', error);
         return NextResponse.json({ error: message }, { status: 500 });
     }
 }

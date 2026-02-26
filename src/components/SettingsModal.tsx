@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { Settings as SettingsIcon, X, Key, Cpu, CheckCircle, AlertCircle } from 'lucide-react';
 import { getApiKey, setApiKey, getModel, setModel } from '@/lib/storage';
-import { AVAILABLE_MODELS, FREE_MODEL } from '@/types';
+import { FREE_MODEL, getAvailableModels } from '@/types';
+import { logger } from '@/lib/logger';
 
 interface SettingsModalProps {
     isOpen: boolean;
@@ -15,6 +16,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const [selectedModel, setSelectedModel] = useState(FREE_MODEL);
     const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
     const [testMessage, setTestMessage] = useState('');
+    const models = getAvailableModels();
 
     useEffect(() => {
         if (isOpen) {
@@ -25,12 +27,14 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }, [isOpen]);
 
     const handleSave = () => {
+        logger.action('Settings save', { model: selectedModel, hasKey: !!key });
         setApiKey(key);
         setModel(selectedModel);
         onClose();
     };
 
     const handleTest = async () => {
+        logger.action('Settings test connection', { model: selectedModel });
         setTestStatus('testing');
         try {
             const response = await fetch('/api/generate', {
@@ -59,14 +63,9 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     };
 
     const handleModelChange = (model: string) => {
+        logger.action('Settings model change', { model });
         setSelectedModel(model);
-        const modelInfo = AVAILABLE_MODELS.find((m) => m.id === model);
-        if (modelInfo && !modelInfo.free && !key) {
-            setTestMessage('⚠️ This model requires an API key');
-            setTestStatus('error');
-        } else {
-            setTestStatus('idle');
-        }
+        setTestStatus('idle');
     };
 
     if (!isOpen) return null;
@@ -90,7 +89,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             <Key size={16} />
                             OpenRouter API Key
                         </label>
-                        <p className="setting-hint">Optional — leave empty for free model. Get a key at <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer">openrouter.ai/keys</a></p>
+                        <p className="setting-hint">Optional — leave empty for free models. Get a key at <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer">openrouter.ai/keys</a></p>
                         <input
                             type="password"
                             value={key}
@@ -106,11 +105,11 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             Model
                         </label>
                         <div className="model-grid">
-                            {AVAILABLE_MODELS.map((model) => (
+                            {models.map((model) => (
                                 <button
                                     key={model.id}
                                     onClick={() => handleModelChange(model.id)}
-                                    className={`model-option ${selectedModel === model.id ? 'active' : ''} ${!model.free && !key ? 'disabled-model' : ''}`}
+                                    className={`model-option ${selectedModel === model.id ? 'active' : ''}`}
                                 >
                                     <span className="model-name">{model.label}</span>
                                     {model.free && <span className="model-badge free">FREE</span>}

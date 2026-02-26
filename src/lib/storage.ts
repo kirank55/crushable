@@ -1,4 +1,5 @@
-import { Project, Settings, FREE_MODEL, DEFAULT_PAID_MODEL } from '@/types';
+import { Project, Settings, FREE_MODEL } from '@/types';
+import { logger } from '@/lib/logger';
 
 const KEYS = {
     apiKey: 'crushable:apiKey',
@@ -15,18 +16,19 @@ export function getApiKey(): string {
 }
 
 export function setApiKey(key: string): void {
+    logger.storage('setApiKey', { keyPrefix: key ? key.slice(0, 10) + '...' : '(empty)' });
     localStorage.setItem(KEYS.apiKey, key);
 }
 
 export function getModel(): string {
     if (typeof window === 'undefined') return FREE_MODEL;
-    const key = getApiKey();
     const saved = localStorage.getItem(KEYS.model);
     if (saved) return saved;
-    return key ? DEFAULT_PAID_MODEL : FREE_MODEL;
+    return FREE_MODEL;
 }
 
 export function setModel(model: string): void {
+    logger.storage('setModel', { model });
     localStorage.setItem(KEYS.model, model);
 }
 
@@ -55,6 +57,7 @@ function setProjects(projects: Project[]): void {
 }
 
 export function saveProject(project: Project): void {
+    logger.storage('saveProject', { id: project.id, name: project.name, blockCount: project.blocks.length });
     const projects = getProjects();
     const index = projects.findIndex((p) => p.id === project.id);
     const updated = { ...project, updatedAt: Date.now() };
@@ -67,12 +70,15 @@ export function saveProject(project: Project): void {
 }
 
 export function deleteProject(id: string): void {
+    logger.storage('deleteProject', { id });
     const projects = getProjects().filter((p) => p.id !== id);
     setProjects(projects);
 }
 
 export function loadProject(id: string): Project | null {
-    return getProjects().find((p) => p.id === id) || null;
+    const project = getProjects().find((p) => p.id === id) || null;
+    logger.storage('loadProject', { id, found: !!project });
+    return project;
 }
 
 export function getCurrentProjectId(): string | null {
@@ -81,6 +87,7 @@ export function getCurrentProjectId(): string | null {
 }
 
 export function setCurrentProjectId(id: string | null): void {
+    logger.storage('setCurrentProjectId', { id });
     if (id) {
         localStorage.setItem(KEYS.currentProjectId, id);
     } else {

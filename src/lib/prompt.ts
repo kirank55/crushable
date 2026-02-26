@@ -14,8 +14,15 @@ RULES:
 
 WHEN EDITING:
 You receive the current HTML of ONE section and the user's change request.
-Return the FULL updated section HTML with the requested changes applied.
-Do NOT change anything the user did not ask to change.
+Your job is to:
+1. UNDERSTAND THE INTENT — Figure out exactly what the user wants changed.
+2. IDENTIFY THE CODE — Locate the specific elements/classes that need modification.
+3. MODIFY ONLY THAT CODE — Change ONLY what the user explicitly asked for.
+4. DO NOT regenerate the entire section from scratch.
+5. DO NOT add, remove, or alter any elements, classes, text, or attributes the user did not mention.
+6. DO NOT rewrite or restyle parts that work fine and were not mentioned.
+7. Return the FULL section HTML with ONLY the requested changes applied.
+8. Keep the same data-block-id attribute unchanged.
 
 WHEN CREATING NEW:
 You receive a description of what to build.
@@ -30,7 +37,7 @@ ${blockHtml}
 USER REQUEST:
 ${userRequest}
 
-Return the FULL updated section HTML with the changes applied. Keep the same data-block-id.`;
+IMPORTANT: Analyze the user's request carefully. Identify the SPECIFIC elements that need to change. Modify ONLY those elements. Do NOT touch, rewrite, or regenerate any other part of this section. Return the FULL updated section HTML with ONLY the requested changes applied. Keep the same data-block-id.`;
 }
 
 export function buildNewPrompt(userRequest: string): string {

@@ -7,6 +7,7 @@ import ChatPanel from '@/components/ChatPanel';
 import Toolbar from '@/components/Toolbar';
 import SettingsModal from '@/components/SettingsModal';
 import ProjectSidebar from '@/components/ProjectSidebar';
+import VersionsPanel from '@/components/VersionsPanel';
 
 export default function BuilderPage() {
   const {
@@ -15,6 +16,7 @@ export default function BuilderPage() {
     currentProjectId,
     isDirty,
     projectName,
+    versions,
     addBlock,
     updateBlock,
     selectBlock,
@@ -24,10 +26,16 @@ export default function BuilderPage() {
     handleNew,
     handleRename,
     clearAll,
+    createVersionSnapshot,
+    loadVersion,
+    importBlocks,
   } = usePageState();
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [projectsOpen, setProjectsOpen] = useState(false);
+  const [versionsOpen, setVersionsOpen] = useState(false);
+  const [chatVisible, setChatVisible] = useState(true);
+  const [mobilePreview, setMobilePreview] = useState(false);
 
   return (
     <div className="builder-layout">
@@ -41,21 +49,39 @@ export default function BuilderPage() {
         onOpenProjects={() => setProjectsOpen(true)}
         onNewProject={handleNew}
         onClearAll={clearAll}
+        onImportBlocks={importBlocks}
       />
 
       <div className="builder-main">
-        <ChatPanel
-          blocks={blocks}
-          selectedBlockId={selectedBlockId}
-          onAddBlock={addBlock}
-          onUpdateBlock={updateBlock}
-          onClearSelection={clearSelection}
-        />
+        {chatVisible && (
+          <ChatPanel
+            blocks={blocks}
+            selectedBlockId={selectedBlockId}
+            onAddBlock={addBlock}
+            onUpdateBlock={updateBlock}
+            onSelectBlock={selectBlock}
+            onClearSelection={clearSelection}
+            onHide={() => setChatVisible(false)}
+            onToggleMobilePreview={() => setMobilePreview(!mobilePreview)}
+            onOpenVersions={() => setVersionsOpen(true)}
+            onVersionCreated={(prompt) => createVersionSnapshot(prompt)}
+          />
+        )}
+
+        {!chatVisible && (
+          <button
+            className="chat-show-btn"
+            onClick={() => setChatVisible(true)}
+            title="Show Chat Panel"
+          >
+            💬
+          </button>
+        )}
 
         <PreviewPanel
           blocks={blocks}
           selectedBlockId={selectedBlockId}
-          onSelectBlock={selectBlock}
+          mobilePreview={mobilePreview}
         />
       </div>
 
@@ -70,6 +96,13 @@ export default function BuilderPage() {
         currentProjectId={currentProjectId}
         onLoadProject={handleLoad}
         onNewProject={handleNew}
+      />
+
+      <VersionsPanel
+        isOpen={versionsOpen}
+        onClose={() => setVersionsOpen(false)}
+        versions={versions}
+        onLoadVersion={loadVersion}
       />
     </div>
   );

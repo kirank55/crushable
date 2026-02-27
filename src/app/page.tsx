@@ -1,175 +1,110 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
-import { usePageState } from '@/hooks/usePageState';
-import { DESIGN_STYLES } from '@/types';
-import PreviewPanel from '@/components/PreviewPanel';
-import ChatPanel, { ProjectDetails } from '@/components/ChatPanel';
-import Toolbar from '@/components/Toolbar';
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { Project } from '@/types';
+import { getProjects, deleteProject } from '@/lib/storage';
+import { Sparkles, Plus, Trash2, Clock, Settings } from 'lucide-react';
 import SettingsModal from '@/components/SettingsModal';
-import ProjectSidebar from '@/components/ProjectSidebar';
-import VersionsPanel from '@/components/VersionsPanel';
-import { logger } from '@/lib/logger';
 
-export default function BuilderPage() {
-  const {
-    blocks,
-    selectedBlockId,
-    currentProjectId,
-    isDirty,
-    projectName,
-    versions,
-    designStyle,
-    canUndo,
-    addBlock,
-    updateBlock,
-    selectBlock,
-    clearSelection,
-    handleSave,
-    handleLoad,
-    handleNew,
-    handleRename,
-    clearAll,
-    createVersionSnapshot,
-    loadVersion,
-    importBlocks,
-    setDesignStyle,
-    undo,
-  } = usePageState();
-
+export default function HomePage() {
+  const router = useRouter();
+  const [projects, setProjects] = useState<Project[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [projectsOpen, setProjectsOpen] = useState(true); // Open initially
-  const [versionsOpen, setVersionsOpen] = useState(false);
-  const [chatVisible, setChatVisible] = useState(true);
-  const [mobilePreview, setMobilePreview] = useState(false);
-  const [chatResetKey, setChatResetKey] = useState(0);
 
-  const designStylePrompt = useMemo(() => {
-    if (!designStyle) return undefined;
-    return DESIGN_STYLES.find(s => s.id === designStyle)?.prompt;
-  }, [designStyle]);
+  useEffect(() => {
+    setProjects(getProjects());
+  }, []);
 
-  // Chat is full screen when no blocks have been generated yet
-  const isChatFullScreen = blocks.length === 0;
-
-  const [projectDetails, setProjectDetails] = useState<ProjectDetails>({});
-
-  // Build a context string from project details for the LLM
-  const projectContext = useMemo(() => {
-    const parts: string[] = [];
-    if (projectDetails.brandName) parts.push(`Brand/Company Name: ${projectDetails.brandName}`);
-    if (projectDetails.title) parts.push(`Hero Title: ${projectDetails.title}`);
-    if (projectDetails.subtitle) parts.push(`Subtitle/Description: ${projectDetails.subtitle}`);
-    if (projectDetails.ctaText) parts.push(`Primary CTA Button Text: ${projectDetails.ctaText}`);
-    return parts.length > 0 ? parts.join('\n') : undefined;
-  }, [projectDetails]);
-
-  const handleNewProject = useCallback(() => {
-    handleNew();
-    setChatResetKey(prev => prev + 1);
-    setChatVisible(true);
-    setProjectDetails({});
-    logger.action('New project + chat reset');
-  }, [handleNew]);
-
-  const handleLoadProject = useCallback((project: Parameters<typeof handleLoad>[0]) => {
-    handleLoad(project);
-    setChatResetKey(prev => prev + 1);
-    setChatVisible(true);
-    setProjectDetails({});
-    logger.action('Load project + chat reset');
-  }, [handleLoad]);
-
-  const handleSetProjectDetails = useCallback((details: ProjectDetails) => {
-    logger.action('Project details set', details);
-    setProjectDetails(details);
-    if (details.brandName) {
-      handleRename(details.brandName);
+  const handleDelete = useCallback((id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (confirm('Delete this project?')) {
+      deleteProject(id);
+      setProjects(getProjects());
     }
-  }, [handleRename]);
+  }, []);
+
+  const formatDate = (timestamp: number) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+  };
 
   return (
-    <div className="builder-layout">
-      {!projectsOpen && (
-        <>
-          <Toolbar
-            blocks={blocks}
-            projectName={projectName}
-            isDirty={isDirty}
-            onSave={handleSave}
-            onRename={handleRename}
-            onOpenSettings={() => setSettingsOpen(true)}
-            onOpenProjects={() => setProjectsOpen(true)}
-            onNewProject={handleNewProject}
-            onClearAll={clearAll}
-            onImportBlocks={importBlocks}
-          />
-
-          <div className="builder-main">
-            {chatVisible && (
-              <ChatPanel
-                blocks={blocks}
-                selectedBlockId={selectedBlockId}
-                designStyle={designStyle}
-                isFullScreen={isChatFullScreen}
-                resetKey={chatResetKey}
-                onAddBlock={addBlock}
-                onUpdateBlock={updateBlock}
-                onSelectBlock={selectBlock}
-                onClearSelection={clearSelection}
-                onHide={() => setChatVisible(false)}
-                onToggleMobilePreview={() => setMobilePreview(!mobilePreview)}
-                onOpenVersions={() => setVersionsOpen(true)}
-                onVersionCreated={(prompt) => createVersionSnapshot(prompt)}
-                onSetDesignStyle={setDesignStyle}
-                onSetProjectDetails={handleSetProjectDetails}
-                onUndo={undo}
-                canUndo={canUndo}
-                designStylePrompt={designStylePrompt}
-                projectContext={projectContext}
-              />
-            )}
-
-            {!chatVisible && !isChatFullScreen && (
-              <button
-                className="chat-show-btn"
-                onClick={() => setChatVisible(true)}
-                title="Show Chat Panel"
-              >
-                💬
-              </button>
-            )}
-
-            {!isChatFullScreen && (
-              <PreviewPanel
-                blocks={blocks}
-                selectedBlockId={selectedBlockId}
-                mobilePreview={mobilePreview}
-              />
-            )}
+    <div className="project-fullscreen">
+      <div className="project-fullscreen-inner">
+        <div className="project-fullscreen-header">
+          <div className="project-fullscreen-brand">
+            <Sparkles size={28} strokeWidth={1.5} />
+            <h1>Crushable</h1>
           </div>
-        </>
-      )}
+          <p className="project-fullscreen-sub">AI Landing Page Builder</p>
+        </div>
+
+        <div className="project-fullscreen-actions">
+          <button
+            onClick={() => router.push('/project/new')}
+            className="new-project-big-btn"
+          >
+            <Plus size={20} />
+            <span>New Project</span>
+          </button>
+        </div>
+
+        {projects.length > 0 && (
+          <div className="project-fullscreen-list">
+            <h3>Recent Projects</h3>
+            <div className="project-grid">
+              {projects.map((project) => (
+                <button
+                  key={project.id}
+                  onClick={() => router.push(`/project/${project.id}`)}
+                  className="project-card"
+                >
+                  <div className="project-card-info">
+                    <span className="project-card-name">{project.name}</span>
+                    <span className="project-card-meta">
+                      <Clock size={12} />
+                      {formatDate(project.updatedAt)}
+                      <span className="project-card-blocks">
+                        {project.blocks.length} section{project.blocks.length !== 1 ? 's' : ''}
+                      </span>
+                    </span>
+                  </div>
+                  <button
+                    onClick={(e) => handleDelete(project.id, e)}
+                    className="project-delete"
+                    title="Delete project"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <button
+          onClick={() => setSettingsOpen(true)}
+          className="settings-link-btn"
+        >
+          <Settings size={14} />
+          Settings
+        </button>
+      </div>
 
       <SettingsModal
         isOpen={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-      />
-
-      <ProjectSidebar
-        isOpen={projectsOpen}
-        isFullScreen={true}
-        onClose={() => setProjectsOpen(false)}
-        currentProjectId={currentProjectId}
-        onLoadProject={handleLoadProject}
-        onNewProject={handleNewProject}
-      />
-
-      <VersionsPanel
-        isOpen={versionsOpen}
-        onClose={() => setVersionsOpen(false)}
-        versions={versions}
-        onLoadVersion={loadVersion}
       />
     </div>
   );

@@ -23,10 +23,37 @@ RULES:
 - Use high-quality placeholder images from https://images.unsplash.com/ with appropriate dimensions.
 - Use Lucide icons via <i data-lucide="icon-name"></i>.
 - Make it visually stunning: use gradients, shadows, rounded corners, modern spacing.
-- Be responsive: use sm:, md:, lg: breakpoints.
 - Use Inter or system font stack for typography.
 - Ensure proper color contrast and accessibility.
 ${designInstruction}${contextInstruction}
+RESPONSIVENESS (MANDATORY):
+- ALL generated sections MUST be fully responsive.
+- Use flex-col md:flex-row for side-by-side layouts.
+- Use grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 for card grids.
+- Stack elements vertically on mobile, expand on desktop.
+- Test mental model: components must look good at 320px, 768px, and 1280px.
+- Text must never overflow its container. Use break-words if needed.
+
+LAYOUT SYSTEM:
+- Wrap ALL section inner content in a container div with class "max-w-[1100px] mx-auto px-4 sm:px-6 lg:px-8".
+- Sections themselves can be full-width (for background colors/images), but the content inside must be contained.
+
+NAVBAR & STICKY HEADERS:
+- Navigation bars should use sticky or fixed positioning.
+- Hero sections that follow a sticky/fixed navbar MUST include pt-16 top padding to prevent content from being hidden behind the navbar.
+- Navbar links should use anchor hrefs (e.g. href="#features", href="#pricing") that match section IDs.
+
+SMOOTH SCROLL & SECTION IDS:
+- Add scroll-behavior: smooth to the <html> element style.
+- Every section MUST have a meaningful id attribute matching its purpose (e.g. id="hero", id="features", id="pricing", id="testimonials", id="contact", id="footer").
+- Navbar anchor links must match these IDs exactly so clicking a nav link scrolls to that section.
+
+MOBILE NAVIGATION:
+- Mobile hamburger menus MUST use inline onclick handlers with plain JavaScript.
+- The toggle script must work without external dependencies.
+- Example pattern: <button onclick="document.getElementById('mobile-menu').classList.toggle('hidden')">
+- Include the menu toggle script inline within the section, wrapped in a <script> tag at the end.
+
 WHEN EDITING:
 You receive the current HTML of ONE section and the user's change request.
 Your job is to:

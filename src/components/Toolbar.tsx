@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Download, Save, Settings, FolderOpen, Plus, Trash2, Check, Upload, Cpu } from 'lucide-react';
+import { Download, Save, Settings, ArrowLeft, Plus, Trash2, Check, Upload, Cpu } from 'lucide-react';
 import { downloadHTML } from '@/lib/export';
 import { getApiKey, getModel } from '@/lib/storage';
 import { Block, getAvailableModels } from '@/types';
@@ -97,8 +97,9 @@ export default function Toolbar({
     return (
         <div className="toolbar">
             <div className="toolbar-left">
-                <button onClick={onOpenProjects} className="toolbar-btn" title="Projects">
-                    <FolderOpen size={18} />
+                <button onClick={onOpenProjects} className="toolbar-btn" title="Back to Projects">
+                    <ArrowLeft size={18} />
+                    <span className="btn-label">Projects</span>
                 </button>
 
                 <div className="toolbar-divider" />

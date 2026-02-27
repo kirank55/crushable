@@ -1,13 +1,14 @@
 'use client';
 
 import { Version } from '@/types';
-import { X, Clock, History } from 'lucide-react';
+import { X, Clock, History, RotateCcw } from 'lucide-react';
 
 interface VersionsPanelProps {
     isOpen: boolean;
     onClose: () => void;
     versions: Version[];
-    onLoadVersion: (version: Version) => void;
+    onLoadVersion: (version: Version, index?: number) => void;
+    onRestoreCurrent?: () => void;
 }
 
 export default function VersionsPanel({
@@ -15,6 +16,7 @@ export default function VersionsPanel({
     onClose,
     versions,
     onLoadVersion,
+    onRestoreCurrent,
 }: VersionsPanelProps) {
     const formatDate = (timestamp: number) => {
         const date = new Date(timestamp);
@@ -50,28 +52,51 @@ export default function VersionsPanel({
                             <p className="hint">Versions are created automatically after each generation.</p>
                         </div>
                     ) : (
-                        versions.map((version, index) => (
-                            <button
-                                key={version.id}
-                                onClick={() => { onLoadVersion(version); onClose(); }}
-                                className={`version-item ${index === 0 ? 'latest' : ''}`}
-                            >
-                                <div className="version-info">
-                                    <span className="version-label">
-                                        {version.label}
-                                        {index === 0 && <span className="version-badge">Latest</span>}
-                                    </span>
-                                    <span className="version-meta">
-                                        <Clock size={12} />
-                                        {formatDate(version.timestamp)}
-                                        <span className="version-blocks">{version.blocks.length} section{version.blocks.length !== 1 ? 's' : ''}</span>
-                                    </span>
-                                    {version.prompt && (
-                                        <span className="version-prompt">&ldquo;{version.prompt.slice(0, 60)}{version.prompt.length > 60 ? '...' : ''}&rdquo;</span>
-                                    )}
-                                </div>
-                            </button>
-                        ))
+                        <>
+                            {/* Current working state button */}
+                            {onRestoreCurrent && (
+                                <button
+                                    onClick={() => { onRestoreCurrent(); onClose(); }}
+                                    className="version-item current"
+                                >
+                                    <div className="version-info">
+                                        <span className="version-label">
+                                            <RotateCcw size={14} />
+                                            Current (working state)
+                                            <span className="version-badge">Live</span>
+                                        </span>
+                                        <span className="version-meta">
+                                            Restore the latest working blocks
+                                        </span>
+                                    </div>
+                                </button>
+                            )}
+                            {versions.slice().reverse().map((version, revIndex) => {
+                                const actualIndex = versions.length - 1 - revIndex;
+                                return (
+                                    <button
+                                        key={version.id}
+                                        onClick={() => { onLoadVersion(version, actualIndex); onClose(); }}
+                                        className={`version-item ${revIndex === 0 ? 'latest' : ''}`}
+                                    >
+                                        <div className="version-info">
+                                            <span className="version-label">
+                                                {version.label}
+                                                {revIndex === 0 && <span className="version-badge">Latest</span>}
+                                            </span>
+                                            <span className="version-meta">
+                                                <Clock size={12} />
+                                                {formatDate(version.timestamp)}
+                                                <span className="version-blocks">{version.blocks.length} section{version.blocks.length !== 1 ? 's' : ''}</span>
+                                            </span>
+                                            {version.prompt && (
+                                                <span className="version-prompt">&ldquo;{version.prompt.slice(0, 60)}{version.prompt.length > 60 ? '...' : ''}&rdquo;</span>
+                                            )}
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </>
                     )}
                 </div>
             </div>

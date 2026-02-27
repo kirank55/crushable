@@ -5,7 +5,7 @@ import { Block, Message, DESIGN_STYLES } from '@/types';
 import { createBlock } from '@/lib/blocks';
 import { getApiKey, getModel } from '@/lib/storage';
 import { parseResponse, parsePlanResponse } from '@/lib/prompt';
-import { Send, Loader2, Sparkles, PanelLeftClose, Smartphone, History, ChevronDown, ChevronRight, Code, Undo2, Zap } from 'lucide-react';
+import { Send, Loader2, Sparkles, PanelLeftClose, Smartphone, History, ChevronDown, ChevronRight, Code, Undo2, Zap, CheckCircle2, Link2, ClipboardList, Hammer, RefreshCw, Square, RotateCcw } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '@/lib/logger';
 
@@ -25,10 +25,13 @@ interface ChatPanelProps {
     onVersionCreated: (prompt: string) => void;
     onSetDesignStyle: (style: string) => void;
     onSetProjectDetails: (details: ProjectDetails) => void;
-    onUndo: () => void;
+    onUndo: () => string | null;
     canUndo: boolean;
     designStylePrompt: string | undefined;
     projectContext: string | undefined;
+    onRestoreBlocks: (blocks: Block[]) => void;
+    initialMessages?: Message[];
+    onMessagesChange?: (messages: Message[]) => void;
 }
 
 export interface ProjectDetails {
@@ -115,8 +118,11 @@ export default function ChatPanel({
     canUndo,
     designStylePrompt,
     projectContext,
+    onRestoreBlocks,
+    initialMessages,
+    onMessagesChange,
 }: ChatPanelProps) {
-    const [messages, setMessages] = useState<Message[]>([]);
+    const [messages, setMessages] = useState<Message[]>(initialMessages || []);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [loadingStatus, setLoadingStatus] = useState<LoadingStatus>({ phase: 'idle' });
@@ -129,15 +135,30 @@ export default function ChatPanel({
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const selectDropdownRef = useRef<HTMLDivElement>(null);
+    const abortControllerRef = useRef<AbortController | null>(null);
 
     const selectedBlock = blocks.find((b) => b.id === selectedBlockId);
 
     useEffect(() => {
-        setMessages([]);
+        setMessages(initialMessages || []);
         setExpandedMessages(new Set());
         setSetupPhase(designStyle ? 'ready' : 'design');
         setSetupDetails({});
-    }, [resetKey]);
+    }, [resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Load initial messages when they change (e.g. project switch)
+    useEffect(() => {
+        if (initialMessages && initialMessages.length > 0 && messages.length === 0) {
+            setMessages(initialMessages);
+        }
+    }, [initialMessages]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Sync messages to parent for persistence
+    useEffect(() => {
+        if (onMessagesChange && messages.length > 0) {
+            onMessagesChange(messages);
+        }
+    }, [messages]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         if (designStyle && setupPhase === 'design') setSetupPhase('details');
@@ -188,6 +209,7 @@ export default function ChatPanel({
         const response = await fetch('/api/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: abortControllerRef.current?.signal,
             body: JSON.stringify({
                 prompt,
                 currentHtml: currentBlock?.html,
@@ -233,6 +255,7 @@ export default function ChatPanel({
         const planResponse = await fetch('/api/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: abortControllerRef.current?.signal,
             body: JSON.stringify({
                 prompt,
                 mode: 'plan',
@@ -261,6 +284,28 @@ export default function ChatPanel({
         const sections = parsePlanResponse(planContent);
         logger.info('Multi-section plan', { sections });
 
+        // Message 1: Plan completed — show what was planned
+        const planSummary = sections.map((s, i) => `${i + 1}. ${s}`).join('\n');
+        const planMsg: Message = {
+            id: uuidv4(),
+            role: 'assistant',
+            content: '',
+            summary: `📋 **Planning complete!** I've planned ${sections.length} sections:\n${planSummary}`,
+        };
+        setMessages((prev) => [...prev, planMsg]);
+
+        // Small pause so user can read the plan
+        await new Promise(resolve => setTimeout(resolve, 600));
+
+        // Message 2: Starting implementation
+        const implMsg: Message = {
+            id: uuidv4(),
+            role: 'assistant',
+            content: '',
+            summary: `🚀 **Now implementing!** Building all ${sections.length} sections one by one…`,
+        };
+        setMessages((prev) => [...prev, implMsg]);
+
         // Step 2: Build each section one by one
         const results: { summary: string; html: string }[] = [];
         for (let i = 0; i < sections.length; i++) {
@@ -282,6 +327,15 @@ export default function ChatPanel({
             onAddBlock(newBlock);
             results.push(result);
 
+            // Per-section completion message
+            const sectionMsg: Message = {
+                id: uuidv4(),
+                role: 'assistant',
+                content: '',
+                summary: `✅ Section ${i + 1}/${sections.length} done: ${result.summary}`,
+            };
+            setMessages((prev) => [...prev, sectionMsg]);
+
             // Small delay between sections
             await new Promise(resolve => setTimeout(resolve, 300));
         }
@@ -289,9 +343,19 @@ export default function ChatPanel({
         return results;
     }, [designStylePrompt, projectContext, generateSection, onAddBlock]);
 
-    const handleSubmit = async () => {
-        const trimmed = input.trim();
+    const handleSubmit = async (overridePrompt?: string) => {
+        const trimmed = (overridePrompt || input).trim();
         if (!trimmed || isLoading) return;
+
+        // Retry intent detection — re-run last user prompt
+        if (/^(try\s*again|retry|redo|re-?run)$/i.test(trimmed) && !overridePrompt) {
+            const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+            if (lastUserMsg) {
+                setInput('');
+                handleSubmit(lastUserMsg.content);
+                return;
+            }
+        }
 
         // Intent detection
         let effectiveBlockId = selectedBlockId;
@@ -302,21 +366,82 @@ export default function ChatPanel({
             onSelectBlock(lastBlock.id);
         }
 
+        // Smart block matching: find ALL blocks referenced in the prompt
+        // Uses fuzzy bidirectional matching (prompt word matches label word or vice versa)
+        const matchedBlocks: { block: Block; score: number }[] = [];
+        if (blocks.length > 1) {
+            const words = trimmed.toLowerCase().split(/\s+/).filter(w => w.length >= 3);
+
+            for (const block of blocks) {
+                const label = (block.label || '').toLowerCase();
+                const labelWords = label.split(/[\s\-_]+/).filter(w => w.length >= 3);
+                const blockIdMatch = block.html?.match(/data-block-id="([^"]+)"/)?.[1]?.toLowerCase() || '';
+                const blockIdWords = blockIdMatch.split(/[\s\-_]+/).filter(w => w.length >= 3);
+                const sectionId = block.html?.match(/id="([^"]+)"/)?.[1]?.toLowerCase() || '';
+                const sectionIdWords = sectionId.split(/[\s\-_]+/).filter(w => w.length >= 3);
+
+                let score = 0;
+                for (const word of words) {
+                    // Direct substring: "pricing" in "pricing table"
+                    if (label.includes(word)) score += 3;
+                    if (blockIdMatch.includes(word)) score += 3;
+                    if (sectionId.includes(word)) score += 3;
+
+                    // Bidirectional partial: "nav" in "navbar" OR "navbar" starts with "nav"
+                    for (const lw of labelWords) {
+                        if (lw.includes(word) || word.includes(lw)) score += 2;
+                    }
+                    for (const bw of blockIdWords) {
+                        if (bw.includes(word) || word.includes(bw)) score += 2;
+                    }
+                    for (const sw of sectionIdWords) {
+                        if (sw.includes(word) || word.includes(sw)) score += 2;
+                    }
+                }
+
+                if (score > 0) {
+                    matchedBlocks.push({ block, score });
+                }
+            }
+
+            matchedBlocks.sort((a, b) => b.score - a.score);
+        }
+
+        // Multi-section edit: if 2+ sections are referenced AND user isn't explicitly targeting one section
+        const isMultiEdit = !selectedBlockId && matchedBlocks.length >= 2 && isEditIntent(trimmed, true);
+
+        // Single block redirect (only if not multi-edit)
+        if (!isMultiEdit && matchedBlocks.length > 0) {
+            const best = matchedBlocks[0];
+            if (best.block.id !== effectiveBlockId) {
+                logger.action('Smart block redirect', {
+                    from: effectiveBlockId,
+                    to: best.block.id,
+                    label: best.block.label,
+                    score: best.score,
+                });
+                effectiveBlockId = best.block.id;
+                onSelectBlock(best.block.id);
+            }
+        }
+
         const currentSelectedBlock = effectiveBlockId
             ? blocks.find((b) => b.id === effectiveBlockId)
             : undefined;
         const mode = currentSelectedBlock ? 'edit' : 'new';
-        const isMultiSection = !currentSelectedBlock && isMultiSectionIntent(trimmed);
+        const isMultiSection = !currentSelectedBlock && !isMultiEdit && isMultiSectionIntent(trimmed);
 
         const userMessage: Message = {
             id: uuidv4(),
             role: 'user',
             content: trimmed,
             blockId: currentSelectedBlock?.id || undefined,
+            blocksSnapshot: blocks.map(b => ({ ...b })),
         };
         setMessages((prev) => [...prev, userMessage]);
         setInput('');
         setIsLoading(true);
+        abortControllerRef.current = new AbortController();
 
         const assistantMessage: Message = {
             id: uuidv4(),
@@ -327,7 +452,65 @@ export default function ChatPanel({
         setMessages((prev) => [...prev, assistantMessage]);
 
         try {
-            if (isMultiSection) {
+            if (isMultiEdit) {
+                // Multi-section edit — edit all matched blocks
+                const editBlocks = matchedBlocks.map(m => m.block);
+                const sectionNames = editBlocks.map(b => b.label || 'section').join(', ');
+                logger.action('Multi-section edit', { sections: sectionNames, count: editBlocks.length });
+
+                // Notify user which sections we're editing
+                setMessages((prev) =>
+                    prev.map((m) =>
+                        m.id === assistantMessage.id
+                            ? { ...m, summary: `✏️ Editing ${editBlocks.length} sections: ${sectionNames}` }
+                            : m
+                    )
+                );
+
+                const results: string[] = [];
+                for (let i = 0; i < editBlocks.length; i++) {
+                    const block = editBlocks[i];
+                    setLoadingStatus({
+                        phase: 'building',
+                        model: getModelLabel(getModel() || 'auto:free'),
+                        currentSection: block.label || 'section',
+                        sectionIndex: i + 1,
+                        totalSections: editBlocks.length,
+                    });
+
+                    // Give the AI context about the multi-edit
+                    const multiEditContext = `This is a multi-section edit. The user wants to change ${editBlocks.length} sections together. You are editing the "${block.label}" section (${i + 1} of ${editBlocks.length}). Other sections being edited: ${editBlocks.filter(b => b.id !== block.id).map(b => b.label).join(', ')}. Apply only the changes relevant to THIS section.`;
+
+                    const result = await generateSection(
+                        `${multiEditContext}\n\nUser request: ${trimmed}`,
+                        'edit',
+                        block,
+                    );
+
+                    onUpdateBlock(block.id, result.html);
+                    results.push(`${block.label}: ${result.summary}`);
+
+                    // Per-section progress message
+                    const progressMsg: Message = {
+                        id: uuidv4(),
+                        role: 'assistant',
+                        content: '',
+                        summary: `✅ Updated ${block.label} (${i + 1}/${editBlocks.length}): ${result.summary}`,
+                    };
+                    setMessages((prev) => [...prev, progressMsg]);
+
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                }
+
+                setMessages((prev) =>
+                    prev.map((m) =>
+                        m.id === assistantMessage.id
+                            ? { ...m, content: `Edited ${editBlocks.length} sections`, summary: `✅ Multi-edit complete — updated ${editBlocks.length} sections:\n${results.map((r, i) => `${i + 1}. ${r}`).join('\n')}` }
+                            : m
+                    )
+                );
+                onVersionCreated(trimmed);
+            } else if (isMultiSection) {
                 // Multi-section generation
                 const results = await handleMultiSectionGeneration(trimmed);
                 const summaries = results.map((r, i) => `${i + 1}. ${r.summary}`).join('\n');
@@ -341,14 +524,28 @@ export default function ChatPanel({
                 );
                 onVersionCreated(trimmed);
             } else {
-                // Single section generation
+                // Single section generation/edit
                 setLoadingStatus({ phase: 'requesting', model: getModelLabel(getModel() || 'auto:free') });
+
+                // Build cross-section context so the AI knows about other sections on the page
+                let editPrompt = trimmed;
+                if (mode === 'edit' && blocks.length > 1) {
+                    const sectionMap = blocks
+                        .filter(b => b.id !== currentSelectedBlock?.id)
+                        .map(b => {
+                            const sid = b.html?.match(/id="([^"]+)"/)?.[1] || '';
+                            return `- "${b.label}"${sid ? ` (id="${sid}")` : ''}`;
+                        })
+                        .join('\n');
+                    editPrompt = `${trimmed}\n\n[Page context — other sections on this page:\n${sectionMap}\nUse these section IDs for any anchor links or scroll references.]`;
+                }
 
                 const response = await fetch('/api/generate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    signal: abortControllerRef.current?.signal,
                     body: JSON.stringify({
-                        prompt: trimmed,
+                        prompt: editPrompt,
                         currentHtml: currentSelectedBlock?.html,
                         blockId: currentSelectedBlock?.id,
                         mode,
@@ -400,18 +597,30 @@ export default function ChatPanel({
                 onVersionCreated(trimmed);
             }
         } catch (error) {
-            const errorMsg = error instanceof Error ? error.message : 'Something went wrong';
-            logger.error('ChatPanel', error);
-            setMessages((prev) =>
-                prev.map((m) =>
-                    m.id === assistantMessage.id
-                        ? { ...m, content: `❌ Error: ${errorMsg}`, summary: `Error: ${errorMsg}` }
-                        : m
-                )
-            );
+            if (error instanceof DOMException && error.name === 'AbortError') {
+                logger.action('Request cancelled by user');
+                setMessages((prev) =>
+                    prev.map((m) =>
+                        m.id === assistantMessage.id
+                            ? { ...m, content: '', summary: '⏹️ Request cancelled' }
+                            : m
+                    )
+                );
+            } else {
+                const errorMsg = error instanceof Error ? error.message : 'Something went wrong';
+                logger.error('ChatPanel', error);
+                setMessages((prev) =>
+                    prev.map((m) =>
+                        m.id === assistantMessage.id
+                            ? { ...m, content: `Error: ${errorMsg}`, summary: `Error: ${errorMsg}` }
+                            : m
+                    )
+                );
+            }
         } finally {
             setIsLoading(false);
             setLoadingStatus({ phase: 'idle' });
+            abortControllerRef.current = null;
         }
     };
 
@@ -433,31 +642,40 @@ export default function ChatPanel({
                 return (
                     <div className="result-status streaming">
                         <Loader2 size={14} className="spin" />
-                        <span>Making API request to {loadingStatus.model}...</span>
+                        <span><Link2 size={12} className="inline-icon" /> Connecting to {loadingStatus.model} — preparing your prompt…</span>
                     </div>
                 );
             case 'generating':
                 return (
                     <div className="result-status streaming">
                         <Loader2 size={14} className="spin" />
-                        <span>Generating with {loadingStatus.model}...</span>
+                        <span><Zap size={12} className="inline-icon" /> {loadingStatus.model} is writing code — generating HTML…</span>
                     </div>
                 );
             case 'planning':
                 return (
                     <div className="result-status streaming">
                         <Loader2 size={14} className="spin" />
-                        <span>📋 Planning the page layout...</span>
+                        <span><ClipboardList size={12} className="inline-icon" /> Analyzing your request — planning page sections…</span>
                     </div>
                 );
             case 'building':
                 return (
                     <div className="result-status streaming">
                         <Loader2 size={14} className="spin" />
-                        <span>🔨 Building section {loadingStatus.sectionIndex}/{loadingStatus.totalSections}: {loadingStatus.currentSection}</span>
+                        <span><Hammer size={12} className="inline-icon" /> Building section {loadingStatus.sectionIndex}/{loadingStatus.totalSections}: {loadingStatus.currentSection}…</span>
                     </div>
                 );
             default:
+                // When loading but no specific phase yet, show preparing message
+                if (isLoading) {
+                    return (
+                        <div className="result-status streaming">
+                            <Loader2 size={14} className="spin" />
+                            <span>Analyzing your request and selecting the best model…</span>
+                        </div>
+                    );
+                }
                 return null;
         }
     };
@@ -535,7 +753,18 @@ export default function ChatPanel({
                 <span>AI Builder</span>
                 <div className="chat-header-actions">
                     {canUndo && (
-                        <button onClick={onUndo} className="header-action-btn undo-btn" title="Undo last change">
+                        <button onClick={() => {
+                            const label = onUndo();
+                            if (label) {
+                                const undoMsg: Message = {
+                                    id: uuidv4(),
+                                    role: 'assistant',
+                                    content: '',
+                                    summary: `↩️ Undo: ${label}`,
+                                };
+                                setMessages((prev) => [...prev, undoMsg]);
+                            }
+                        }} className="header-action-btn undo-btn" title="Undo last change">
                             <Undo2 size={16} />
                         </button>
                     )}
@@ -605,6 +834,27 @@ export default function ChatPanel({
                                             <span className="message-block-tag">✏️ {blocks.find(b => b.id === message.blockId)?.label || message.blockId}</span>
                                         )}
                                         <p>{message.content}</p>
+                                        {message.blocksSnapshot && !isLoading && (
+                                            <button
+                                                className="checkpoint-restore-btn"
+                                                title="Restore to this checkpoint"
+                                                onClick={() => {
+                                                    if (message.blocksSnapshot) {
+                                                        onRestoreBlocks(message.blocksSnapshot);
+                                                        const restoreMsg: Message = {
+                                                            id: uuidv4(),
+                                                            role: 'assistant',
+                                                            content: '',
+                                                            summary: `⏪ Restored to checkpoint: "${message.content.slice(0, 50)}${message.content.length > 50 ? '…' : ''}"`,
+                                                        };
+                                                        setMessages((prev) => [...prev, restoreMsg]);
+                                                    }
+                                                }}
+                                            >
+                                                <RotateCcw size={12} />
+                                                Restore
+                                            </button>
+                                        )}
                                     </>
                                 ) : (
                                     <div className="assistant-response">
@@ -620,7 +870,8 @@ export default function ChatPanel({
                                                         )
                                                     ) : (
                                                         <div className="result-status done">
-                                                            <span>✅ {message.summary || 'Generated section'}</span>
+                                                            <CheckCircle2 size={14} className="done-icon" />
+                                                            <span style={{ whiteSpace: 'pre-line' }}>{message.summary || 'Generated section'}</span>
                                                         </div>
                                                     )}
                                                 </div>
@@ -637,12 +888,34 @@ export default function ChatPanel({
                                                     <pre className="code-preview"><code>{message.content}</code></pre>
                                                 )}
                                             </div>
-                                        ) : (
-                                            <div className="typing-indicator">
-                                                {renderLoadingStatus() || <><span></span><span></span><span></span></>}
+                                        ) : message.summary ? (
+                                            <div className="result-status done">
+                                                <span style={{ whiteSpace: 'pre-line' }}>{message.summary}</span>
                                             </div>
-                                        )}
+                                        ) : isCurrentlyStreaming ? (
+                                            <div className="typing-indicator">
+                                                {renderLoadingStatus() || (
+                                                    <div className="result-status streaming">
+                                                        <Loader2 size={14} className="spin" />
+                                                        <span>Reading your prompt and setting up the generation pipeline…</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : null}
                                     </div>
+                                )}
+                                {/* Try Again button for error messages */}
+                                {message.role === 'assistant' && message.content.startsWith('Error:') && !isLoading && (
+                                    <button
+                                        onClick={() => {
+                                            const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+                                            if (lastUserMsg) handleSubmit(lastUserMsg.content);
+                                        }}
+                                        className="retry-btn"
+                                    >
+                                        <RefreshCw size={14} />
+                                        Try Again
+                                    </button>
                                 )}
                             </div>
                         </div>
@@ -683,8 +956,16 @@ export default function ChatPanel({
                                         onClick={() => { onClearSelection(); setShowSelectDropdown(false); }}
                                         className={`select-dropdown-item ${!selectedBlockId ? 'active' : ''}`}
                                     >
-                                        ✨ New Section
+                                        ✨ Create New Section
                                     </button>
+                                    {selectedBlockId && (
+                                        <button
+                                            onClick={() => { onClearSelection(); setShowSelectDropdown(false); }}
+                                            className="select-dropdown-item"
+                                        >
+                                            🚫 No Selection
+                                        </button>
+                                    )}
                                     {blocks.map((block) => (
                                         <button
                                             key={block.id}
@@ -697,12 +978,23 @@ export default function ChatPanel({
                                 </div>
                             )}
                         </div>
-                        <button onClick={handleSubmit} disabled={!input.trim() || isLoading} className="send-button">
-                            {isLoading ? <Loader2 size={18} className="spin" /> : <Send size={18} />}
+                        <button
+                            onClick={() => {
+                                if (isLoading && abortControllerRef.current) {
+                                    abortControllerRef.current.abort();
+                                } else {
+                                    handleSubmit();
+                                }
+                            }}
+                            disabled={!isLoading && !input.trim()}
+                            className={`send-button ${isLoading ? 'cancel' : ''}`}
+                            title={isLoading ? 'Cancel request' : 'Send'}
+                        >
+                            {isLoading ? <Square size={16} /> : <Send size={18} />}
                         </button>
                     </div>
                 </div>
             </div>
-        </div>
+        </div >
     );
 }

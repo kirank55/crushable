@@ -17,8 +17,10 @@ export interface Project {
   name: string;
   blocks: Block[];
   versions?: Version[];
+  messages?: Message[];
   designStyle?: string;
   theme?: string;
+  status?: 'in-progress' | 'completed';
   updatedAt: number;
 }
 
@@ -28,6 +30,7 @@ export interface Message {
   content: string;
   summary?: string;
   blockId?: string;
+  blocksSnapshot?: Block[];
 }
 
 export interface Settings {

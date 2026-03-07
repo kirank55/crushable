@@ -556,6 +556,43 @@ body {
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
 }
 
+.diff-preview {
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 260px;
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+}
+
+.diff-line {
+  white-space: pre;
+  padding: 2px 8px;
+}
+
+.diff-line.meta {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--text-muted);
+}
+
+.diff-line.add {
+  background: rgba(34, 197, 94, 0.16);
+  color: #166534;
+}
+
+.diff-line.remove {
+  background: rgba(239, 68, 68, 0.16);
+  color: #991b1b;
+}
+
+.diff-line.context {
+  color: var(--text-secondary);
+}
+
 /* Design Style Chooser */
 
 .design-style-grid {

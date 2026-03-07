@@ -49,6 +49,46 @@ type LoadingStatus = {
     totalSections?: number;
 };
 
+function buildUnifiedDiff(beforeText: string, afterText: string): string {
+    const before = beforeText.replace(/\r\n/g, '\n').split('\n');
+    const after = afterText.replace(/\r\n/g, '\n').split('\n');
+    const dp: number[][] = Array.from({ length: before.length + 1 }, () => Array(after.length + 1).fill(0));
+
+    for (let i = before.length - 1; i >= 0; i--) {
+        for (let j = after.length - 1; j >= 0; j--) {
+            if (before[i] === after[j]) dp[i][j] = dp[i + 1][j + 1] + 1;
+            else dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+        }
+    }
+
+    const lines: string[] = ['--- before', '+++ after'];
+    let i = 0;
+    let j = 0;
+
+    while (i < before.length && j < after.length) {
+        if (before[i] === after[j]) {
+            lines.push(` ${before[i]}`);
+            i++;
+            j++;
+        } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+            lines.push(`-${before[i]}`);
+            i++;
+        } else {
+            lines.push(`+${after[j]}`);
+            j++;
+        }
+    }
+
+    while (i < before.length) lines.push(`-${before[i++]}`);
+    while (j < after.length) lines.push(`+${after[j++]}`);
+
+    return lines.join('\n');
+}
+
+function looksLikeDiff(content: string): boolean {
+    return content.startsWith('--- before\n+++ after\n') || content === '--- before\n+++ after';
+}
+
 function isEditIntent(prompt: string, hasBlocks: boolean): boolean {
     if (!hasBlocks) return false;
     const editPatterns = [
@@ -487,6 +527,7 @@ export default function ChatPanel({
                         block,
                     );
 
+                    const diff = buildUnifiedDiff(block.html, result.html);
                     onUpdateBlock(block.id, result.html);
                     results.push(`${block.label}: ${result.summary}`);
 
@@ -494,7 +535,7 @@ export default function ChatPanel({
                     const progressMsg: Message = {
                         id: uuidv4(),
                         role: 'assistant',
-                        content: '',
+                        content: diff,
                         summary: `✅ Updated ${block.label} (${i + 1}/${editBlocks.length}): ${result.summary}`,
                     };
                     setMessages((prev) => [...prev, progressMsg]);
@@ -584,7 +625,15 @@ export default function ChatPanel({
                 const { summary, html: htmlContent } = parseResponse(fullContent);
                 setMessages((prev) =>
                     prev.map((m) =>
-                        m.id === assistantMessage.id ? { ...m, content: fullContent, summary } : m
+                        m.id === assistantMessage.id
+                            ? {
+                                ...m,
+                                content: mode === 'edit' && currentSelectedBlock
+                                    ? buildUnifiedDiff(currentSelectedBlock.html, htmlContent)
+                                    : fullContent,
+                                summary,
+                            }
+                            : m
                     )
                 );
 
@@ -824,6 +873,7 @@ export default function ChatPanel({
                 {messages.map((message) => {
                     const isExpanded = expandedMessages.has(message.id);
                     const isCurrentlyStreaming = isLoading && messages[messages.length - 1]?.id === message.id;
+                    const hasDiff = looksLikeDiff(message.content);
 
                     return (
                         <div key={message.id} className={`chat-message ${message.role}`}>
@@ -880,12 +930,32 @@ export default function ChatPanel({
                                                     <button onClick={() => toggleMessageExpanded(message.id)} className="code-toggle-btn">
                                                         {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                                                         <Code size={14} />
-                                                        <span>{message.content.length} chars generated</span>
+                                                        <span>{hasDiff ? 'View code diff' : `${message.content.length} chars generated`}</span>
                                                     </button>
                                                 )}
 
                                                 {isExpanded && !isCurrentlyStreaming && (
-                                                    <pre className="code-preview"><code>{message.content}</code></pre>
+                                                    hasDiff ? (
+                                                        <div className="diff-preview">
+                                                            {message.content.split('\n').map((line, index) => {
+                                                                const diffClass =
+                                                                    line.startsWith('---') || line.startsWith('+++')
+                                                                        ? 'meta'
+                                                                        : line.startsWith('+')
+                                                                            ? 'add'
+                                                                            : line.startsWith('-')
+                                                                                ? 'remove'
+                                                                                : 'context';
+                                                                return (
+                                                                    <div key={`${message.id}-${index}`} className={`diff-line ${diffClass}`}>
+                                                                        {line}
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    ) : (
+                                                        <pre className="code-preview"><code>{message.content}</code></pre>
+                                                    )
                                                 )}
                                             </div>
                                         ) : message.summary ? (

@@ -5,7 +5,7 @@ import { Block, Message, DESIGN_STYLES } from '@/types';
 import { createBlock } from '@/lib/blocks';
 import { getApiKey, getModel } from '@/lib/storage';
 import { parseResponse, parsePlanResponse } from '@/lib/prompt';
-import { Send, Loader2, Sparkles, PanelLeftClose, Smartphone, History, ChevronDown, ChevronRight, Code, Undo2, Zap, CheckCircle2, Link2, ClipboardList, Hammer, RefreshCw, Square, RotateCcw } from 'lucide-react';
+import { Send, Loader2, Sparkles, PanelLeftClose, Smartphone, History, ChevronDown, ChevronRight, Code, Undo2, Zap, CheckCircle2, Link2, ClipboardList, Hammer, RefreshCw, Square, RotateCcw, Pencil, Save, X } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '@/lib/logger';
 
@@ -138,6 +138,46 @@ function getModelLabel(modelId: string): string {
     return labels[modelId] || modelId;
 }
 
+function buildDetailedLandingPagePlan(designStyleId: string | undefined, details: ProjectDetails): string {
+    const style = DESIGN_STYLES.find((item) => item.id === designStyleId);
+    const brandName = details.brandName?.trim() || 'Your brand';
+    const heroTitle = details.title?.trim() || 'A strong value-focused hero headline';
+    const subtitle = details.subtitle?.trim() || 'A concise supporting message that explains the offer and why it matters.';
+    const ctaText = details.ctaText?.trim() || 'Get Started';
+
+    return [
+        `Project: Build a conversion-focused landing page for ${brandName}.`,
+        `Design direction: ${style?.label || 'Professional'} style with a clean visual hierarchy and a consistent CTA treatment.`,
+        '',
+        'Execution plan:',
+        '1. Navigation',
+        `   Include the ${brandName} brand mark, anchor links to key sections, and a primary CTA button labeled "${ctaText}".`,
+        '2. Hero section',
+        `   Lead with the headline "${heroTitle}" and support it with "${subtitle}". Add one primary CTA and one trust/supporting element.`,
+        '3. Social proof strip',
+        '   Add customer logos, a usage metric, or a credibility statement directly below the hero to reduce friction early.',
+        '4. Features section',
+        '   Present 3 to 6 feature cards with short benefit-driven titles, concise descriptions, and simple visual rhythm.',
+        '5. How it works section',
+        '   Explain the product or service in 3 steps so the visitor understands the path from interest to outcome.',
+        '6. Testimonials section',
+        '   Add 2 to 3 testimonials with names, roles, and outcome-focused quotes to reinforce trust.',
+        '7. Pricing or offer section',
+        '   Show the primary plan or offer clearly, highlight the recommended option, and remove ambiguity around next steps.',
+        '8. FAQ section',
+        '   Answer common objections around value, setup, support, timelines, or guarantees.',
+        '9. Final CTA section',
+        `   Repeat the main promise, reinforce urgency or clarity, and end with the "${ctaText}" action.`,
+        '10. Footer',
+        '   Include brand details, utility links, contact information, and any legal/support links needed for completeness.',
+        '',
+        'Content notes:',
+        `- Keep messaging aligned to ${brandName} and maintain the ${style?.label || 'selected'} style throughout the page.`,
+        '- Reuse the same CTA language across hero, pricing/offer, and final CTA sections.',
+        '- Prioritize scannable copy, strong spacing, and obvious section transitions.',
+    ].join('\n');
+}
+
 export default function ChatPanel({
     blocks,
     selectedBlockId,
@@ -168,6 +208,8 @@ export default function ChatPanel({
     const [loadingStatus, setLoadingStatus] = useState<LoadingStatus>({ phase: 'idle' });
     const [showSelectDropdown, setShowSelectDropdown] = useState(false);
     const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
+    const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
+    const [planDraft, setPlanDraft] = useState('');
     const [setupPhase, setSetupPhase] = useState<'design' | 'details' | 'ready'>(
         designStyle ? 'ready' : 'design'
     );
@@ -182,6 +224,8 @@ export default function ChatPanel({
     useEffect(() => {
         setMessages(initialMessages || []);
         setExpandedMessages(new Set());
+        setEditingPlanId(null);
+        setPlanDraft('');
         setSetupPhase(designStyle ? 'ready' : 'design');
         setSetupDetails({});
     }, [resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -383,9 +427,10 @@ export default function ChatPanel({
         return results;
     }, [designStylePrompt, projectContext, generateSection, onAddBlock]);
 
-    const handleSubmit = async (overridePrompt?: string) => {
+    const handleSubmit = async (overridePrompt?: string, displayPrompt?: string) => {
         const trimmed = (overridePrompt || input).trim();
-        if (!trimmed || isLoading) return;
+        const visiblePrompt = (displayPrompt || overridePrompt || input).trim();
+        if (!trimmed || !visiblePrompt || isLoading) return;
 
         // Retry intent detection — re-run last user prompt
         if (/^(try\s*again|retry|redo|re-?run)$/i.test(trimmed) && !overridePrompt) {
@@ -474,7 +519,7 @@ export default function ChatPanel({
         const userMessage: Message = {
             id: uuidv4(),
             role: 'user',
-            content: trimmed,
+            content: visiblePrompt,
             blockId: currentSelectedBlock?.id || undefined,
             blocksSnapshot: blocks.map(b => ({ ...b })),
         };
@@ -685,6 +730,54 @@ export default function ChatPanel({
         setShowSelectDropdown(false);
     };
 
+    const handleGenerateLandingPageClick = () => {
+        if (isLoading) return;
+
+        const userMessage: Message = {
+            id: uuidv4(),
+            role: 'user',
+            content: 'User clicked on Generate Landing Page',
+            blocksSnapshot: blocks.map((block) => ({ ...block })),
+        };
+
+        const planMessage: Message = {
+            id: uuidv4(),
+            role: 'assistant',
+            content: '',
+            summary: 'Detailed landing page plan ready',
+            plan: buildDetailedLandingPagePlan(designStyle, setupDetails),
+        };
+
+        setMessages((prev) => [...prev, userMessage, planMessage]);
+    };
+
+    const handlePlanEditStart = (message: Message) => {
+        setEditingPlanId(message.id);
+        setPlanDraft(message.plan || '');
+    };
+
+    const handlePlanEditCancel = () => {
+        setEditingPlanId(null);
+        setPlanDraft('');
+    };
+
+    const handlePlanEditSave = (messageId: string) => {
+        setMessages((prev) =>
+            prev.map((message) =>
+                message.id === messageId
+                    ? { ...message, plan: planDraft }
+                    : message
+            )
+        );
+        setEditingPlanId(null);
+        setPlanDraft('');
+    };
+
+    const handlePlanProceed = (message: Message) => {
+        if (!message.plan || isLoading) return;
+        handleSubmit(message.plan, 'Proceed with landing page plan');
+    };
+
     const renderLoadingStatus = () => {
         switch (loadingStatus.phase) {
             case 'requesting':
@@ -845,10 +938,7 @@ export default function ChatPanel({
 
                         {/* Generate Landing Page button */}
                         <button
-                            onClick={() => {
-                                setInput('Build a complete landing page with navbar, hero section, features, testimonials, pricing, and footer');
-                                setTimeout(() => handleSubmit(), 100);
-                            }}
+                            onClick={handleGenerateLandingPageClick}
                             className="generate-landing-btn"
                             disabled={isLoading}
                         >
@@ -908,7 +998,55 @@ export default function ChatPanel({
                                     </>
                                 ) : (
                                     <div className="assistant-response">
-                                        {message.content ? (
+                                        {message.plan ? (
+                                            <div className="assistant-plan-card">
+                                                <div className="assistant-plan-header">
+                                                    <div className="assistant-plan-heading">
+                                                        <span className="assistant-plan-label">Landing Page Plan</span>
+                                                        <span className="assistant-plan-summary">{message.summary || 'Detailed landing page plan ready'}</span>
+                                                    </div>
+                                                </div>
+
+                                                {editingPlanId === message.id ? (
+                                                    <textarea
+                                                        value={planDraft}
+                                                        onChange={(e) => setPlanDraft(e.target.value)}
+                                                        className="assistant-plan-editor"
+                                                        rows={18}
+                                                    />
+                                                ) : (
+                                                    <pre className="assistant-plan-text">{message.plan}</pre>
+                                                )}
+
+                                                {editingPlanId === message.id ? (
+                                                    <div className="assistant-plan-actions">
+                                                        <button onClick={handlePlanEditCancel} className="assistant-plan-btn secondary">
+                                                            <X size={14} />
+                                                            Cancel
+                                                        </button>
+                                                        <button onClick={() => handlePlanEditSave(message.id)} className="assistant-plan-btn">
+                                                            <Save size={14} />
+                                                            Save
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <div className="assistant-plan-actions">
+                                                        <button
+                                                            onClick={() => handlePlanProceed(message)}
+                                                            className="assistant-plan-btn"
+                                                            disabled={isLoading}
+                                                        >
+                                                            <Send size={14} />
+                                                            Proceed
+                                                        </button>
+                                                        <button onClick={() => handlePlanEditStart(message)} className="assistant-plan-btn">
+                                                            <Pencil size={14} />
+                                                            Edit
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : message.content ? (
                                             <div className="assistant-result">
                                                 <div className="result-summary">
                                                     {isCurrentlyStreaming ? (

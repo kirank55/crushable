@@ -5,26 +5,26 @@
    ======================================== */
 
 :root {
-  --bg-primary: #0a0a0f;
-  --bg-secondary: #12121a;
-  --bg-tertiary: #1a1a2e;
-  --bg-hover: #22223a;
-  --bg-active: #2a2a4a;
-  --border: #2a2a3e;
-  --border-light: #3a3a52;
-  --text-primary: #f0f0f5;
-  --text-secondary: #a0a0b8;
-  --text-muted: #6a6a82;
-  --accent: #6366f1;
-  --accent-hover: #818cf8;
-  --accent-muted: rgba(99, 102, 241, 0.15);
+  --bg-primary: #0d0d0d;
+  --bg-secondary: #141414;
+  --bg-tertiary: #1a1a1a;
+  --bg-hover: #242424;
+  --bg-active: #2e2e2e;
+  --border: #2a2a2a;
+  --border-light: #3d3d3d;
+  --text-primary: #f5f5f5;
+  --text-secondary: #a3a3a3;
+  --text-muted: #737373;
+  --accent: #ffffff;
+  --accent-hover: #e5e5e5;
+  --accent-muted: rgba(255, 255, 255, 0.1);
   --success: #22c55e;
   --error: #ef4444;
   --warning: #f59e0b;
-  --radius: 8px;
-  --radius-lg: 12px;
-  --shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.5);
+  --radius: 6px;
+  --radius-lg: 10px;
+  --shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.6);
   --transition: 150ms ease;
 }
 
@@ -101,10 +101,10 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 10px;
+  padding: 6px 12px;
   background: transparent;
   color: var(--text-secondary);
-  border: 1px solid transparent;
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   cursor: pointer;
   font-size: 13px;
@@ -116,6 +116,7 @@ body {
 .toolbar-btn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+  border-color: var(--border-light);
 }
 
 .toolbar-btn:disabled {
@@ -284,7 +285,8 @@ body {
 
 .chat-show-btn:hover {
   background: var(--bg-hover);
-  border-color: var(--accent);
+  border-color: var(--border-light);
+  color: var(--text-primary);
 }
 
 .chat-messages {
@@ -346,7 +348,7 @@ body {
   border-radius: var(--radius-lg);
   cursor: pointer;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   font-family: inherit;
   text-align: left;
   transition: all var(--transition);
@@ -357,10 +359,9 @@ body {
 
 .chat-suggestions button:hover {
   background: var(--bg-hover);
-  border-color: var(--accent);
+  border-color: var(--border-light);
   color: var(--text-primary);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
 }
 
 .chat-message {
@@ -372,8 +373,9 @@ body {
 }
 
 .chat-message.user .message-content {
-  background: var(--accent);
-  color: white;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+
   border-radius: 16px 16px 4px 16px;
   padding: 10px 14px;
   max-width: 85%;
@@ -431,6 +433,112 @@ body {
 
 .assistant-response {
   font-size: 13px;
+}
+
+.assistant-plan-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.assistant-plan-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.assistant-plan-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.assistant-plan-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+
+.assistant-plan-summary {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.assistant-plan-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  justify-content: flex-end;
+  padding-top: 2px;
+}
+
+.assistant-plan-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  transition: all var(--transition);
+  flex-shrink: 0;
+}
+
+.assistant-plan-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.assistant-plan-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.assistant-plan-btn.secondary {
+  color: var(--text-muted);
+}
+
+.assistant-plan-text {
+  margin: 0;
+  padding: 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+}
+
+.assistant-plan-editor {
+  width: 100%;
+  resize: vertical;
+  min-height: 320px;
+  padding: 12px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  line-height: 1.6;
+  font-family: inherit;
+  outline: none;
+}
+
+.assistant-plan-editor:focus {
+  border-color: var(--accent);
 }
 
 .assistant-result {
@@ -733,7 +841,7 @@ body {
 }
 
 .input-row textarea:focus {
-  border-color: var(--accent);
+  border-color: var(--border-light);
 }
 
 .input-row textarea::placeholder {
@@ -780,9 +888,9 @@ body {
 }
 
 .select-block-btn.has-selection {
-  border-color: var(--accent);
-  background: var(--accent-muted);
-  color: var(--accent-hover);
+  border-color: var(--border-light);
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .selected-label {
@@ -837,8 +945,8 @@ body {
   justify-content: center;
   width: 38px;
   height: 38px;
-  background: var(--accent);
-  color: white;
+  background: var(--text-primary);
+  color: var(--bg-primary);
   border: none;
   border-radius: var(--radius);
   cursor: pointer;
@@ -847,7 +955,7 @@ body {
 }
 
 .send-button:hover:not(:disabled) {
-  background: var(--accent-hover);
+  background: var(--text-secondary);
   transform: scale(1.05);
 }
 
@@ -858,6 +966,7 @@ body {
 
 .send-button.cancel {
   background: var(--error);
+  color: white;
   opacity: 1;
   cursor: pointer;
 }
@@ -908,10 +1017,10 @@ body {
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 5px 12px;
+  padding: 6px 12px;
   background: transparent;
   color: var(--text-muted);
-  border: none;
+  border: 1px solid transparent;
   border-radius: var(--radius);
   cursor: pointer;
   font-size: 12px;
@@ -1551,7 +1660,7 @@ body {
   align-items: center;
   gap: 8px;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .sidebar-close {
@@ -1576,15 +1685,21 @@ body {
   gap: 6px;
   margin: 12px 16px;
   padding: 10px;
-  background: var(--accent-muted);
-  color: var(--accent-hover);
-  border: 1px dashed rgba(99, 102, 241, 0.4);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px dashed var(--border-light);
   border-radius: var(--radius);
   cursor: pointer;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   font-family: inherit;
   transition: all var(--transition);
+}
+
+.new-project-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-light);
+  color: var(--text-primary);
 }
 
 .new-project-btn:hover {
@@ -1855,16 +1970,13 @@ body {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  color: var(--accent);
+  color: var(--text-primary);
 }
 
 .project-fullscreen-brand h1 {
-  font-size: 28px;
-  font-weight: 800;
-  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: 2px;
 }
 
 .project-fullscreen-sub {
@@ -1884,21 +1996,21 @@ body {
   gap: 8px;
   width: 100%;
   padding: 16px;
-  background: var(--accent);
-  color: white;
+  background: var(--text-primary);
+  color: var(--bg-primary);
   border: none;
   border-radius: var(--radius-lg);
   cursor: pointer;
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 600;
   font-family: inherit;
   transition: all var(--transition);
 }
 
 .new-project-big-btn:hover {
-  background: var(--accent-hover);
+  background: var(--text-secondary);
   transform: translateY(-1px);
-  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 4px 20px rgba(255, 255, 255, 0.15);
 }
 
 .settings-link-btn {
@@ -1962,7 +2074,7 @@ body {
 
 .project-card:hover {
   background: var(--bg-hover);
-  border-color: var(--accent);
+  border-color: var(--border-light);
 }
 
 .project-card.active {

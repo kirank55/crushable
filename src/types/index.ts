@@ -29,6 +29,7 @@ export interface Message {
   role: 'user' | 'assistant';
   content: string;
   summary?: string;
+  plan?: string;
   blockId?: string;
   blocksSnapshot?: Block[];
 }

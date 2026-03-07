@@ -47,7 +47,7 @@ export default function HomePage() {
             <Sparkles size={28} strokeWidth={1.5} />
             <h1>Crushable</h1>
           </div>
-          <p className="project-fullscreen-sub">AI Landing Page Builder</p>
+          <p className="project-fullscreen-sub">AI Page Builder</p>
         </div>
 
         <div className="project-fullscreen-actions">

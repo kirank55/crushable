@@ -78,7 +78,8 @@ body {
 
 .toolbar-left,
 .toolbar-center,
-.toolbar-right {
+.toolbar-right,
+.toolbar-actions {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -439,6 +440,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  color: var(--text-primary)
 }
 
 .assistant-plan-header {
@@ -514,7 +516,7 @@ body {
   background: var(--bg-primary);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font-size: 12px;
   line-height: 1.6;
   white-space: pre-wrap;
@@ -1007,10 +1009,6 @@ body {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 6px 12px;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border);
-  justify-content: flex-end;
 }
 
 .preview-tab {
@@ -2231,7 +2229,7 @@ body {
 .setup-continue-btn {
   flex: 1;
   padding: 10px 20px;
-  background: var(--accent);
+  background: var(--bg-primary);
   color: white;
   border: none;
   border-radius: var(--radius);
@@ -2243,7 +2241,8 @@ body {
 }
 
 .setup-continue-btn:hover {
-  background: var(--accent-hover);
+  background: var(--bg-primary-hover);
+  border: 1px solid var(--accent);
 }
 
 .setup-continue-btn:disabled {
@@ -2252,7 +2251,7 @@ body {
 }
 
 .setup-continue-btn:disabled:hover {
-  background: var(--accent);
+  background: var(--bg-primary);
 }
 
 .optional-tag {
@@ -2274,7 +2273,7 @@ body {
   width: 100%;
   max-width: 320px;
   padding: 14px 24px;
-  background: linear-gradient(135deg, var(--accent), #8b5cf6);
+  background: var(--bg-primary);
   color: white;
   border: none;
   border-radius: var(--radius-lg);

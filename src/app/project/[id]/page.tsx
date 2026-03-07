@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { usePageState } from '@/hooks/usePageState';
 import { DESIGN_STYLES } from '@/types';
+import { MessageSquare } from 'lucide-react';
 import PreviewPanel from '@/components/PreviewPanel';
 import ChatPanel, { ProjectDetails } from '@/components/ChatPanel';
 import Toolbar from '@/components/Toolbar';
@@ -56,6 +57,7 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
     const [chatVisible, setChatVisible] = useState(true);
     const [mobilePreview, setMobilePreview] = useState(false);
     const [chatResetKey, setChatResetKey] = useState(0);
+    const [viewMode, setViewMode] = useState<'preview' | 'code' | 'console'>('preview');
 
     const designStylePrompt = useMemo(() => {
         if (!designStyle) return undefined;
@@ -113,6 +115,12 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
                 onNewProject={handleNewProject}
                 onClearAll={clearAll}
                 onImportBlocks={importBlocks}
+                onToggleMobilePreview={() => setMobilePreview(!mobilePreview)}
+                onOpenVersions={() => setVersionsOpen(true)}
+                onHideChat={() => setChatVisible(false)}
+                chatVisible={chatVisible}
+                viewMode={viewMode}
+                onViewModeChange={setViewMode}
             />
 
             <div className="builder-main">
@@ -133,6 +141,7 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
                         onVersionCreated={(prompt) => createVersionSnapshot(prompt)}
                         onSetDesignStyle={setDesignStyle}
                         onSetProjectDetails={handleSetProjectDetails}
+                        onOpenSettings={() => setSettingsOpen(true)}
                         onUndo={undo}
                         canUndo={canUndo}
                         designStylePrompt={designStylePrompt}
@@ -149,7 +158,7 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
                         onClick={() => setChatVisible(true)}
                         title="Show Chat Panel"
                     >
-                        💬
+                        <MessageSquare size={18} />
                     </button>
                 )}
 
@@ -159,6 +168,7 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
                         selectedBlockId={selectedBlockId}
                         mobilePreview={mobilePreview}
                         designStyle={designStyle}
+                        viewMode={viewMode}
                         onCodeSave={(editedHtml) => {
                             // Replace all blocks with the edited HTML as a single block
                             const { createBlock } = require('@/lib/blocks');

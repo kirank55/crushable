@@ -25,6 +25,9 @@ RULES:
 - Make it visually stunning: use gradients, shadows, rounded corners, modern spacing.
 - Use Inter or system font stack for typography.
 - Ensure proper color contrast and accessibility.
+- Do NOT use emojis anywhere in the generated HTML. Use Lucide icons (<i data-lucide="icon-name"></i>) or plain text instead.
+- ALWAYS ensure text has sufficient contrast against its background. Light text on dark backgrounds, dark text on light backgrounds.
+- When using background images or gradients, add a semi-transparent overlay or text-shadow to guarantee readability.
 ${designInstruction}${contextInstruction}
 RESPONSIVENESS (MANDATORY):
 - ALL generated sections MUST be fully responsive.

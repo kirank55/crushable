@@ -27,6 +27,12 @@ import {
   Pencil,
   Save,
   X,
+  Plus,
+  Layout,
+  Grid3x3,
+  DollarSign,
+  Ban,
+  Cpu,
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { logger } from "@/lib/logger";
@@ -47,6 +53,7 @@ interface ChatPanelProps {
   onVersionCreated: (prompt: string) => void;
   onSetDesignStyle: (style: string) => void;
   onSetProjectDetails: (details: ProjectDetails) => void;
+  onOpenSettings: () => void;
   onUndo: () => string | null;
   canUndo: boolean;
   designStylePrompt: string | undefined;
@@ -162,7 +169,7 @@ function isMultiSectionIntent(prompt: string): boolean {
 
 function getModelLabel(modelId: string): string {
   const labels: Record<string, string> = {
-    "auto:free": "Free Auto",
+    "auto:free": "Free Model",
     "stepfun/step-3.5-flash:free": "StepFun 3.5 Flash",
     "z-ai/glm-4.5-air:free": "GLM 4.5 Air",
     "nvidia/nemotron-3-nano-30b-a3b:free": "NVIDIA Nemotron 30B",
@@ -325,6 +332,7 @@ export default function ChatPanel({
   onVersionCreated,
   onSetDesignStyle,
   onSetProjectDetails,
+  onOpenSettings,
   onUndo,
   canUndo,
   designStylePrompt,
@@ -345,6 +353,7 @@ export default function ChatPanel({
   );
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [planDraft, setPlanDraft] = useState("");
+  const [usedPlanIds, setUsedPlanIds] = useState<Set<string>>(new Set());
   const [setupPhase, setSetupPhase] = useState<"design" | "details" | "ready">(
     designStyle ? "ready" : "design",
   );
@@ -642,7 +651,7 @@ export default function ChatPanel({
         id: uuidv4(),
         role: "assistant",
         content: "",
-        summary: `📋 **Planning complete!** I've planned ${sections.length} sections:\n${planSummary}`,
+        summary: `Planning complete — ${sections.length} sections planned:\n${planSummary}`,
       };
       setMessages((prev) => [...prev, planMsg]);
 
@@ -703,7 +712,7 @@ export default function ChatPanel({
             message.id === sectionProgressMessageId
               ? {
                 ...message,
-                summary: `✅ Section ${i + 1}/${sections.length} done: ${result.summary}`,
+                summary: `Section ${i + 1}/${sections.length} done: ${result.summary}`,
               }
               : message,
           ),
@@ -1058,7 +1067,7 @@ export default function ChatPanel({
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantMessage.id
-              ? { ...m, content: "", summary: "⏹️ Request cancelled" }
+              ? { ...m, content: "", summary: "Request cancelled" }
               : m,
           ),
         );
@@ -1177,7 +1186,7 @@ export default function ChatPanel({
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantMessageId
-              ? { ...m, summary: "⏹️ Plan generation cancelled" }
+              ? { ...m, summary: "Plan generation cancelled" }
               : m,
           ),
         );
@@ -1222,6 +1231,8 @@ export default function ChatPanel({
   const handlePlanProceed = async (message: Message) => {
     if (!message.plan || isLoading) return;
 
+    setUsedPlanIds((prev) => new Set(prev).add(message.id));
+
     const plannedSections = extractDetailedPlanSections(message.plan);
     if (plannedSections.length === 0) {
       handleSubmit(message.plan, "Proceed with landing page plan");
@@ -1248,7 +1259,7 @@ export default function ChatPanel({
     try {
       const results = await executeSectionPlan(
         plannedSections,
-        `Using the saved landing page plan with ${plannedSections.length} sections. Building each section in order...`,
+        `Building your page section by section...`,
       );
       const summaries = results
         .map((result, index) => `${index + 1}. ${result.summary}`)
@@ -1275,7 +1286,7 @@ export default function ChatPanel({
               ? {
                 ...currentMessage,
                 content: "",
-                summary: "â¹ï¸ Request cancelled",
+                summary: "Request cancelled",
               }
               : currentMessage,
           ),
@@ -1321,7 +1332,7 @@ export default function ChatPanel({
             <Loader2 size={14} className="spin" />
             <span>
               <Zap size={12} className="inline-icon" /> {loadingStatus.model} is
-              writing code — generating HTML…
+              generating your section…
             </span>
           </div>
         );
@@ -1387,7 +1398,7 @@ export default function ChatPanel({
               onClick={() => handleDesignStyleSelect("professional")}
               className="skip-design-btn"
             >
-              Skip — use Professional defaults
+              Skip
             </button>
           </div>
         </div>
@@ -1409,12 +1420,12 @@ export default function ChatPanel({
               {selectedStyle?.emoji} {selectedStyle?.label} style
             </div>
             <h3>
-              Project Details <span className="optional-tag">all optional</span>
+              Project Details
             </h3>
             <p>Provide some context to help the AI generate better content.</p>
             <div className="setup-fields">
               <div className="setup-field">
-                <label>Brand / Company Name</label>
+                <label>Brand / Company Name  <span className="optional-tag">optional</span></label>
                 <input
                   value={setupDetails.brandName || ""}
                   onChange={(e) =>
@@ -1425,10 +1436,11 @@ export default function ChatPanel({
                   }
                   placeholder="e.g. Acme Inc."
                 />
+
               </div>
 
               <div className="setup-field">
-                <label>Hero Title</label>
+                <label>Hero Title  <span className="optional-tag">optional</span></label>
                 <input
                   value={setupDetails.title || ""}
                   onChange={(e) =>
@@ -1441,7 +1453,7 @@ export default function ChatPanel({
                 />
               </div>
               <div className="setup-field">
-                <label>Subtitle / Description</label>
+                <label>Subtitle / Description  <span className="optional-tag">optional</span></label>
                 <input
                   value={setupDetails.subtitle || ""}
                   onChange={(e) =>
@@ -1454,7 +1466,7 @@ export default function ChatPanel({
                 />
               </div>
               <div className="setup-field">
-                <label>Primary CTA Button Text</label>
+                <label>Primary CTA Button <span className="optional-tag">optional</span></label>
                 <input
                   value={setupDetails.ctaText || ""}
                   onChange={(e) =>
@@ -1519,55 +1531,6 @@ export default function ChatPanel({
   // === MAIN CHAT VIEW ===
   return (
     <div className={`chat-panel ${isFullScreen ? "full-screen" : ""}`}>
-      <div className="chat-header">
-        <Sparkles size={18} />
-        <span>AI Builder</span>
-        <div className="chat-header-actions">
-          {canUndo && (
-            <button
-              onClick={() => {
-                const label = onUndo();
-                if (label) {
-                  const undoMsg: Message = {
-                    id: uuidv4(),
-                    role: "assistant",
-                    content: "",
-                    summary: `↩️ Undo: ${label}`,
-                  };
-                  setMessages((prev) => [...prev, undoMsg]);
-                }
-              }}
-              className="header-action-btn undo-btn"
-              title="Undo last change"
-            >
-              <Undo2 size={16} />
-            </button>
-          )}
-          <button
-            onClick={onToggleMobilePreview}
-            className="header-action-btn"
-            title="Mobile Preview"
-          >
-            <Smartphone size={16} />
-          </button>
-          <button
-            onClick={onOpenVersions}
-            className="header-action-btn"
-            title="Versions"
-          >
-            <History size={16} />
-          </button>
-          {!isFullScreen && (
-            <button
-              onClick={onHide}
-              className="header-action-btn"
-              title="Hide Panel"
-            >
-              <PanelLeftClose size={16} />
-            </button>
-          )}
-        </div>
-      </div>
 
       <div className="chat-messages">
         {messages.length === 0 && (
@@ -1600,7 +1563,7 @@ export default function ChatPanel({
                   )
                 }
               >
-                🎨 Hero Section
+                <Layout size={14} /> Hero Section
               </button>
               <button
                 onClick={() =>
@@ -1609,7 +1572,7 @@ export default function ChatPanel({
                   )
                 }
               >
-                ✨ Features Grid
+                <Grid3x3 size={14} /> Features Grid
               </button>
               <button
                 onClick={() =>
@@ -1618,7 +1581,7 @@ export default function ChatPanel({
                   )
                 }
               >
-                💰 Pricing Table
+                <DollarSign size={14} /> Pricing Table
               </button>
             </div>
           </div>
@@ -1637,7 +1600,7 @@ export default function ChatPanel({
                   <>
                     {message.blockId && (
                       <span className="message-block-tag">
-                        ✏️{" "}
+                        <Pencil size={10} />{" "}
                         {blocks.find((b) => b.id === message.blockId)?.label ||
                           message.blockId}
                       </span>
@@ -1654,7 +1617,7 @@ export default function ChatPanel({
                               id: uuidv4(),
                               role: "assistant",
                               content: "",
-                              summary: `⏪ Restored to checkpoint: "${message.content.slice(0, 50)}${message.content.length > 50 ? "…" : ""}"`,
+                              summary: `Restored to checkpoint: "${message.content.slice(0, 50)}${message.content.length > 50 ? "…" : ""}"`,
                             };
                             setMessages((prev) => [...prev, restoreMsg]);
                           }
@@ -1710,6 +1673,12 @@ export default function ChatPanel({
                               <Save size={14} />
                               Save
                             </button>
+                          </div>
+                        ) : usedPlanIds.has(message.id) ? (
+                          <div className="assistant-plan-actions">
+                            <span className="result-status done" style={{ fontSize: 12 }}>
+                              <CheckCircle2 size={12} /> Plan executed
+                            </span>
                           </div>
                         ) : (
                           <div className="assistant-plan-actions">
@@ -1866,6 +1835,10 @@ export default function ChatPanel({
             disabled={isLoading}
           />
           <div className="input-actions">
+            <button onClick={onOpenSettings} className="model-badge-btn" title="Models">
+              <Cpu size={12} />
+              Models
+            </button>
             <div className="select-block-wrapper" ref={selectDropdownRef}>
               <button
                 onClick={() => setShowSelectDropdown(!showSelectDropdown)}
@@ -1876,7 +1849,7 @@ export default function ChatPanel({
                 {selectedBlock ? (
                   <span className="selected-label">{selectedBlock.label}</span>
                 ) : (
-                  <span>Select</span>
+                  <span>Select Section</span>
                 )}
                 <ChevronDown size={14} />
               </button>
@@ -1889,26 +1862,24 @@ export default function ChatPanel({
                     }}
                     className={`select-dropdown-item ${!selectedBlockId ? "active" : ""}`}
                   >
-                    ✨ Create New Section
+                    <Plus size={14} /> Create New Section
                   </button>
-                  {selectedBlockId && (
-                    <button
-                      onClick={() => {
-                        onClearSelection();
-                        setShowSelectDropdown(false);
-                      }}
-                      className="select-dropdown-item"
-                    >
-                      🚫 No Selection
-                    </button>
-                  )}
+                  <button
+                    onClick={() => {
+                      onClearSelection();
+                      setShowSelectDropdown(false);
+                    }}
+                    className="select-dropdown-item"
+                  >
+                    <Ban size={14} /> No Selection
+                  </button>
                   {blocks.map((block) => (
                     <button
                       key={block.id}
                       onClick={() => handleSelectBlock(block.id)}
                       className={`select-dropdown-item ${selectedBlockId === block.id ? "active" : ""}`}
                     >
-                      ✏️ {block.label}
+                      <Pencil size={12} /> {block.label}
                     </button>
                   ))}
                 </div>

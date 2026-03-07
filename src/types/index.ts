@@ -57,7 +57,7 @@ export const FREE_AUTO_MODEL = 'auto:free';
 export const FREE_MODEL = 'auto:free';
 
 const DEFAULT_MODELS: ModelInfo[] = [
-  { id: 'auto:free', label: 'Free Auto', free: true },
+  { id: 'auto:free', label: 'Free Model', free: true },
   { id: 'stepfun/step-3.5-flash:free', label: 'StepFun 3.5 Flash', free: true },
   { id: 'z-ai/glm-4.5-air:free', label: 'GLM 4.5 Air', free: true },
   { id: 'nvidia/nemotron-3-nano-30b-a3b:free', label: 'NVIDIA Nemotron 30B', free: true },
@@ -79,7 +79,7 @@ export function getAvailableModels(hasApiKey: boolean = false): ModelInfo[] {
     try {
       const parsed = JSON.parse(envModels) as ModelInfo[];
       if (!parsed.find(m => m.id === FREE_AUTO_MODEL)) {
-        parsed.unshift({ id: FREE_AUTO_MODEL, label: 'Free Auto', free: true });
+        parsed.unshift({ id: FREE_AUTO_MODEL, label: 'Free Model', free: true });
       }
       models = parsed;
     } catch {

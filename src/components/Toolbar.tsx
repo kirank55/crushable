@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Download, Save, Settings, ArrowLeft, Plus, Trash2, Check, Upload, Cpu } from 'lucide-react';
+import { Download, Save, Settings, ArrowLeft, Plus, Trash2, Check, Upload, Smartphone, History, PanelLeftClose, Eye, Code, Terminal } from 'lucide-react';
 import { downloadHTML } from '@/lib/export';
 import { getApiKey, getModel } from '@/lib/storage';
 import { Block, getAvailableModels } from '@/types';
@@ -19,6 +19,12 @@ interface ToolbarProps {
     onNewProject: () => void;
     onClearAll: () => void;
     onImportBlocks: (blocks: Block[]) => void;
+    onToggleMobilePreview?: () => void;
+    onOpenVersions?: () => void;
+    onHideChat?: () => void;
+    chatVisible?: boolean;
+    viewMode?: 'preview' | 'code' | 'console';
+    onViewModeChange?: (mode: 'preview' | 'code' | 'console') => void;
 }
 
 export default function Toolbar({
@@ -32,6 +38,12 @@ export default function Toolbar({
     onNewProject,
     onClearAll,
     onImportBlocks,
+    onToggleMobilePreview,
+    onOpenVersions,
+    onHideChat,
+    chatVisible,
+    viewMode,
+    onViewModeChange,
 }: ToolbarProps) {
     const [isEditing, setIsEditing] = useState(false);
     const [editName, setEditName] = useState(projectName);
@@ -67,7 +79,7 @@ export default function Toolbar({
         logger.action('Toolbar import', { fileName: file.name });
 
         const confirmed = window.confirm(
-            '⚠️ Only import code generated with Crushable.\n\nImporting code from other sources may not work correctly. Continue?'
+            'Only import code generated with Crushable.\n\nImporting code from other sources may not work correctly. Continue?'
         );
 
         if (!confirmed) {
@@ -104,6 +116,27 @@ export default function Toolbar({
 
                 <div className="toolbar-divider" />
 
+
+                <div className="toolbar-actions">
+                    {onToggleMobilePreview && (
+                        <button onClick={onToggleMobilePreview} className="header-action-btn" title="Mobile Preview">
+                            <Smartphone size={16} />
+                        </button>
+                    )}
+                    {onOpenVersions && (
+                        <button onClick={onOpenVersions} className="header-action-btn" title="Versions">
+                            <History size={16} />
+                        </button>
+                    )}
+                    {onHideChat && chatVisible && (
+                        <button onClick={onHideChat} className="header-action-btn" title="Hide Chat">
+                            <PanelLeftClose size={16} />
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            <div className="toolbar-center">
                 {isEditing ? (
                     <input
                         value={editName}
@@ -124,16 +157,56 @@ export default function Toolbar({
                 )}
             </div>
 
-            <div className="toolbar-center">
-                <button onClick={onOpenSettings} className="model-badge-btn" title="Models">
-                    <Cpu size={12} />
-                    Models
-                </button>
-            </div>
+            {/* <div className="toolbar-center">
+                {onToggleMobilePreview && (
+                    <button onClick={onToggleMobilePreview} className="header-action-btn" title="Mobile Preview">
+                        <Smartphone size={16} />
+                    </button>
+                )}
+                {onOpenVersions && (
+                    <button onClick={onOpenVersions} className="header-action-btn" title="Versions">
+                        <History size={16} />
+                    </button>
+                )}
+                {onHideChat && chatVisible && (
+                    <button onClick={onHideChat} className="header-action-btn" title="Hide Chat">
+                        <PanelLeftClose size={16} />
+                    </button>
+                )}
+            </div> */}
 
             <div className="toolbar-right">
-                <button onClick={onNewProject} className="toolbar-btn" title="New Project">
-                    <Plus size={18} />
+                {viewMode && onViewModeChange && (
+                    <div className="preview-tabs">
+                        <button
+                            onClick={() => onViewModeChange('preview')}
+                            className={`preview-tab ${viewMode === 'preview' ? 'active' : ''}`}
+                        >
+                            <Eye size={14} />
+                            Preview
+                        </button>
+                        <button
+                            onClick={() => onViewModeChange('code')}
+                            className={`preview-tab ${viewMode === 'code' ? 'active' : ''}`}
+                        >
+                            <Code size={14} />
+                            Code
+                        </button>
+                        <button
+                            onClick={() => onViewModeChange('console')}
+                            className={`preview-tab ${viewMode === 'console' ? 'active' : ''}`}
+                        >
+                            <Terminal size={14} />
+                            Console
+                        </button>
+                    </div>
+                )}
+
+                <div className="toolbar-divider" />
+
+                <button onClick={handleSave} className="toolbar-btn save-btn" title="Save">
+                    {showSaved ? <Check size={18} /> : <Save size={18} />}
+                    <span className="btn-label">{showSaved ? 'Saved!' : 'Save'}</span>
                 </button>
 
                 <input
@@ -148,10 +221,6 @@ export default function Toolbar({
                     <span className="btn-label">Import</span>
                 </button>
 
-                <button onClick={handleSave} className="toolbar-btn save-btn" title="Save">
-                    {showSaved ? <Check size={18} /> : <Save size={18} />}
-                    <span className="btn-label">{showSaved ? 'Saved!' : 'Save'}</span>
-                </button>
 
                 <button
                     onClick={() => downloadHTML(blocks)}
@@ -163,17 +232,8 @@ export default function Toolbar({
                     <span className="btn-label">Export</span>
                 </button>
 
-                {blocks.length > 0 && (
-                    <button onClick={onClearAll} className="toolbar-btn" title="Clear All">
-                        <Trash2 size={18} />
-                    </button>
-                )}
-
                 <div className="toolbar-divider" />
 
-                <button onClick={onOpenSettings} className="toolbar-btn settings-btn" title="Settings">
-                    <Settings size={18} />
-                </button>
             </div>
         </div>
     );

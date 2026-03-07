@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Block } from '@/types';
-import { Eye, Code, Terminal, Copy, Check, Pencil, Save, X } from 'lucide-react';
+import { Copy, Check, Pencil, Save, X } from 'lucide-react';
 
 interface ConsoleLine {
   type: 'log' | 'warn' | 'error' | 'info';
@@ -15,6 +15,7 @@ interface PreviewPanelProps {
   selectedBlockId: string | null;
   mobilePreview: boolean;
   designStyle?: string;
+  viewMode: 'preview' | 'code' | 'console';
   onCodeSave?: (sectionsHtml: string) => void;
 }
 
@@ -27,10 +28,9 @@ const STYLE_BODY_BG: Record<string, string> = {
   elegant: '#1e293b',
 };
 
-export default function PreviewPanel({ blocks, selectedBlockId, mobilePreview, designStyle, onCodeSave }: PreviewPanelProps) {
+export default function PreviewPanel({ blocks, selectedBlockId, mobilePreview, designStyle, viewMode, onCodeSave }: PreviewPanelProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [mounted, setMounted] = useState(false);
-  const [viewMode, setViewMode] = useState<'preview' | 'code' | 'console'>('preview');
   const [consoleLogs, setConsoleLogs] = useState<ConsoleLine[]>([]);
   const consoleEndRef = useRef<HTMLDivElement>(null);
   const codeRef = useRef<HTMLElement>(null);
@@ -243,32 +243,6 @@ ${'<'}/script>
 
   return (
     <div className="preview-panel">
-      <div className="preview-tabs">
-        <button
-          onClick={() => setViewMode('preview')}
-          className={`preview-tab ${viewMode === 'preview' ? 'active' : ''}`}
-        >
-          <Eye size={14} />
-          Preview
-        </button>
-        <button
-          onClick={() => setViewMode('code')}
-          className={`preview-tab ${viewMode === 'code' ? 'active' : ''}`}
-        >
-          <Code size={14} />
-          Code
-        </button>
-        <button
-          onClick={() => setViewMode('console')}
-          className={`preview-tab ${viewMode === 'console' ? 'active' : ''}`}
-        >
-          <Terminal size={14} />
-          Console
-          {consoleLogs.length > 0 && (
-            <span className="console-badge">{consoleLogs.length}</span>
-          )}
-        </button>
-      </div>
 
       {viewMode === 'preview' ? (
         <div className={`preview-container ${mobilePreview ? 'mobile' : ''}`}>

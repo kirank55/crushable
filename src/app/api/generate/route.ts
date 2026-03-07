@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { streamFromOpenRouter, parseSSEStream } from '@/lib/openrouter';
-import { getSystemPrompt, buildEditPrompt, buildNewPrompt, buildPlanPrompt } from '@/lib/prompt';
+import { getSystemPrompt, buildEditPrompt, buildNewPrompt, buildPlanPrompt, buildDetailedPlanPrompt } from '@/lib/prompt';
 import { logger } from '@/lib/logger';
 
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
-        const { prompt, currentHtml, blockId, mode, apiKey, model, designStylePrompt, projectContext } = body;
+        const { prompt, currentHtml, blockId, mode, apiKey, model, designStylePrompt, projectContext, planDetails } = body;
 
         logger.api('/api/generate', { mode, model, hasApiKey: !!apiKey, blockId: blockId || null, hasDesignStyle: !!designStylePrompt, hasProjectContext: !!projectContext });
 
-        if (!prompt) {
+        if (!prompt && mode !== 'detailed-plan') {
             logger.error('/api/generate', 'Missing prompt');
             return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
         }
@@ -38,7 +38,20 @@ export async function POST(req: NextRequest) {
         let systemPrompt: string;
         let userPrompt: string;
 
-        if (mode === 'plan') {
+        if (mode === 'detailed-plan') {
+            // Detailed plan mode: ask LLM to generate a product-specific landing page plan
+            const d = planDetails || {};
+            systemPrompt = 'You are a landing page strategist. Generate a detailed, conversion-focused execution plan tailored to the specific product and brand. Return ONLY the plan text in the exact numbered format requested, with no markdown code blocks or extra commentary.';
+            userPrompt = buildDetailedPlanPrompt(
+                d.brandName || 'Your brand',
+                d.productDescription || 'A product',
+                d.designStyleLabel || 'Professional',
+                d.heroTitle || 'A strong value-focused hero headline',
+                d.subtitle || 'A concise supporting message that explains the offer and why it matters.',
+                d.ctaText || 'Get Started',
+            );
+            logger.info('Detailed plan mode', { brandName: d.brandName });
+        } else if (mode === 'plan') {
             // Planning mode: ask LLM which sections to build
             systemPrompt = 'You are a landing page planner. Given a user request, return a JSON array of section names to build.';
             userPrompt = buildPlanPrompt(prompt);

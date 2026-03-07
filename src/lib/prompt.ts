@@ -107,6 +107,58 @@ Return ONLY the JSON array, nothing else. No markdown, no code blocks, just the 
 }
 
 /**
+ * Build a prompt to generate a detailed, product-specific landing page plan.
+ */
+export function buildDetailedPlanPrompt(
+    brandName: string,
+    productDescription: string,
+    designStyleLabel: string,
+    heroTitle: string,
+    subtitle: string,
+    ctaText: string,
+): string {
+    return `You are a landing page strategist. Based on the project details below, create a detailed, conversion-focused execution plan for a landing page.
+
+Project details:
+- Brand/Company: ${brandName}
+- Product: ${productDescription}
+- Design style: ${designStyleLabel}
+- Hero headline: ${heroTitle}
+- Subtitle: ${subtitle}
+- Primary CTA: ${ctaText}
+
+Return the plan in EXACTLY this format (numbered sections with indented descriptions). Include 8-10 sections:
+
+Project: Build a conversion-focused landing page for ${brandName}.
+Product Description: ${productDescription}
+Design direction: ${designStyleLabel} style with a clean visual hierarchy and a consistent CTA treatment.
+
+Execution plan:
+1. Navigation
+   Include the ${brandName} brand mark, anchor links to key sections, and a primary CTA button labeled "${ctaText}".
+2. Hero section
+   Lead with the headline "${heroTitle}" and support it with "${subtitle}". Add one primary CTA and one trust/supporting element.
+3. [Next section name]
+   [Detailed, product-specific description of what this section should contain, tailored to ${brandName} and the product described above.]
+...
+
+Content notes:
+- Keep messaging aligned to ${brandName} and maintain the ${designStyleLabel} style throughout the page.
+- Reuse the same CTA language across hero, pricing/offer, and final CTA sections.
+- Prioritize scannable copy, strong spacing, and obvious section transitions.
+
+IMPORTANT RULES:
+- Make ALL section descriptions SPECIFIC to the product (${productDescription}). Do NOT use generic placeholder text.
+- For features, mention actual feature ideas relevant to the product.
+- For testimonials, suggest realistic personas that would use this product.
+- For FAQ, suggest questions that actual customers would ask about this specific product.
+- For pricing, suggest tier names and feature sets that make sense for this product.
+- Keep the numbered format exactly as shown — each section has a number and title on one line, then an indented description on the next line(s).
+- Always start with Navigation and Hero, always end with a Final CTA and Footer.
+- Return ONLY the plan text, no markdown code blocks, no extra commentary.`;
+}
+
+/**
  * Parse the LLM response to extract summary and HTML.
  * Handles both the new format (with separators) and legacy format (raw HTML).
  */

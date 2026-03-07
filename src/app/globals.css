@@ -2204,6 +2204,23 @@ body {
   color: var(--text-muted);
 }
 
+.setup-field-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.setup-field-hint.invalid {
+  color: #f59e0b;
+}
+
+.setup-field-hint.valid {
+  color: #22c55e;
+}
+
+.setup-field-hint.tried {
+  color: #ef4444;
+}
+
 .setup-actions {
   display: flex;
   gap: 8px;
@@ -2227,6 +2244,15 @@ body {
 
 .setup-continue-btn:hover {
   background: var(--accent-hover);
+}
+
+.setup-continue-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.setup-continue-btn:disabled:hover {
+  background: var(--accent);
 }
 
 .optional-tag {

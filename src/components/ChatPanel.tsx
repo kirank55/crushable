@@ -176,51 +176,6 @@ function getModelLabel(modelId: string): string {
   return labels[modelId] || modelId;
 }
 
-function buildDetailedLandingPagePlan(
-  designStyleId: string | undefined,
-  details: ProjectDetails,
-): string {
-  const style = DESIGN_STYLES.find((item) => item.id === designStyleId);
-  const brandName = details.brandName?.trim() || "Your brand";
-  const heroTitle =
-    details.title?.trim() || "A strong value-focused hero headline";
-  const subtitle =
-    details.subtitle?.trim() ||
-    "A concise supporting message that explains the offer and why it matters.";
-  const ctaText = details.ctaText?.trim() || "Get Started";
-
-  return [
-    `Project: Build a conversion-focused landing page for ${brandName}.`,
-    `Design direction: ${style?.label || "Professional"} style with a clean visual hierarchy and a consistent CTA treatment.`,
-    "",
-    "Execution plan:",
-    "1. Navigation",
-    `   Include the ${brandName} brand mark, anchor links to key sections, and a primary CTA button labeled "${ctaText}".`,
-    "2. Hero section",
-    `   Lead with the headline "${heroTitle}" and support it with "${subtitle}". Add one primary CTA and one trust/supporting element.`,
-    "3. Social proof strip",
-    "   Add customer logos, a usage metric, or a credibility statement directly below the hero to reduce friction early.",
-    "4. Features section",
-    "   Present 3 to 6 feature cards with short benefit-driven titles, concise descriptions, and simple visual rhythm.",
-    "5. How it works section",
-    "   Explain the product or service in 3 steps so the visitor understands the path from interest to outcome.",
-    "6. Testimonials section",
-    "   Add 2 to 3 testimonials with names, roles, and outcome-focused quotes to reinforce trust.",
-    "7. Pricing or offer section",
-    "   Show the primary plan or offer clearly, highlight the recommended option, and remove ambiguity around next steps.",
-    "8. FAQ section",
-    "   Answer common objections around value, setup, support, timelines, or guarantees.",
-    "9. Final CTA section",
-    `   Repeat the main promise, reinforce urgency or clarity, and end with the "${ctaText}" action.`,
-    "10. Footer",
-    "   Include brand details, utility links, contact information, and any legal/support links needed for completeness.",
-    "",
-    "Content notes:",
-    `- Keep messaging aligned to ${brandName} and maintain the ${style?.label || "selected"} style throughout the page.`,
-    "- Reuse the same CTA language across hero, pricing/offer, and final CTA sections.",
-    "- Prioritize scannable copy, strong spacing, and obvious section transitions.",
-  ].join("\n");
-}
 
 function extractDetailedPlanSections(plan: string): PlannedSection[] {
   const lines = plan.split(/\r?\n/);
@@ -264,13 +219,23 @@ function extractDetailedPlanSections(plan: string): PlannedSection[] {
 function shouldShowRestoreButton(
   message: Message,
   isLoading: boolean,
+  messages: Message[],
+  messageIndex: number,
 ): boolean {
   if (!message.blocksSnapshot || isLoading) return false;
 
-  return (
-    message.content !== "Proceed with landing page plan" &&
-    message.content !== "User clicked on Generate Landing Page"
-  );
+  if (
+    message.content === "Proceed with landing page plan" ||
+    message.content === "User clicked on Generate Landing Page"
+  ) {
+    return false;
+  }
+
+  // Only show restore if the next assistant message has a code diff
+  const nextMessage = messages[messageIndex + 1];
+  if (!nextMessage || nextMessage.role !== "assistant") return false;
+
+  return looksLikeDiff(nextMessage.content);
 }
 
 function isExplanationIntent(prompt: string): boolean {
@@ -384,6 +349,7 @@ export default function ChatPanel({
     designStyle ? "ready" : "design",
   );
   const [setupDetails, setSetupDetails] = useState<ProjectDetails>({});
+  const [triedToProceed, setTriedToProceed] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastPersistedMessageIdsRef = useRef("");
   const lastPersistedMessageSignatureRef = useRef("");
@@ -479,6 +445,7 @@ export default function ChatPanel({
   };
 
   const handleSetupComplete = () => {
+    if ((setupDetails.productDescription || "").trim().length < 50) return;
     onSetProjectDetails(setupDetails);
     setSetupPhase("ready");
   };
@@ -604,9 +571,9 @@ export default function ChatPanel({
           prev.map((message) =>
             message.id === sectionProgressMessageId
               ? {
-                  ...message,
-                  summary: `Section ${i + 1}/${sections.length} done: ${result.summary}`,
-                }
+                ...message,
+                summary: `Section ${i + 1}/${sections.length} done: ${result.summary}`,
+              }
               : message,
           ),
         );
@@ -735,9 +702,9 @@ export default function ChatPanel({
           prev.map((message) =>
             message.id === sectionProgressMessageId
               ? {
-                  ...message,
-                  summary: `✅ Section ${i + 1}/${sections.length} done: ${result.summary}`,
-                }
+                ...message,
+                summary: `✅ Section ${i + 1}/${sections.length} done: ${result.summary}`,
+              }
               : message,
           ),
         );
@@ -923,9 +890,9 @@ export default function ChatPanel({
           prev.map((m) =>
             m.id === assistantMessage.id
               ? {
-                  ...m,
-                  summary: `✏️ Editing ${editBlocks.length} sections: ${sectionNames}`,
-                }
+                ...m,
+                summary: `✏️ Editing ${editBlocks.length} sections: ${sectionNames}`,
+              }
               : m,
           ),
         );
@@ -973,10 +940,10 @@ export default function ChatPanel({
           prev.map((m) =>
             m.id === assistantMessage.id
               ? {
-                  ...m,
-                  content: `Edited ${editBlocks.length} sections`,
-                  summary: `✅ Multi-edit complete — updated ${editBlocks.length} sections:\n${results.map((r, i) => `${i + 1}. ${r}`).join("\n")}`,
-                }
+                ...m,
+                content: `Edited ${editBlocks.length} sections`,
+                summary: `✅ Multi-edit complete — updated ${editBlocks.length} sections:\n${results.map((r, i) => `${i + 1}. ${r}`).join("\n")}`,
+              }
               : m,
           ),
         );
@@ -992,10 +959,10 @@ export default function ChatPanel({
           prev.map((m) =>
             m.id === assistantMessage.id
               ? {
-                  ...m,
-                  content: `Built ${results.length} sections`,
-                  summary: `Generated ${results.length} sections:\n${summaries}`,
-                }
+                ...m,
+                content: `Built ${results.length} sections`,
+                summary: `Generated ${results.length} sections:\n${summaries}`,
+              }
               : m,
           ),
         );
@@ -1066,13 +1033,13 @@ export default function ChatPanel({
           prev.map((m) =>
             m.id === assistantMessage.id
               ? {
-                  ...m,
-                  content:
-                    mode === "edit" && currentSelectedBlock
-                      ? buildUnifiedDiff(currentSelectedBlock.html, htmlContent)
-                      : fullContent,
-                  summary,
-                }
+                ...m,
+                content:
+                  mode === "edit" && currentSelectedBlock
+                    ? buildUnifiedDiff(currentSelectedBlock.html, htmlContent)
+                    : fullContent,
+                summary,
+              }
               : m,
           ),
         );
@@ -1103,10 +1070,10 @@ export default function ChatPanel({
           prev.map((m) =>
             m.id === assistantMessage.id
               ? {
-                  ...m,
-                  content: `Error: ${errorMsg}`,
-                  summary: `Error: ${errorMsg}`,
-                }
+                ...m,
+                content: `Error: ${errorMsg}`,
+                summary: `Error: ${errorMsg}`,
+              }
               : m,
           ),
         );
@@ -1130,7 +1097,7 @@ export default function ChatPanel({
     setShowSelectDropdown(false);
   };
 
-  const handleGenerateLandingPageClick = () => {
+  const handleGenerateLandingPageClick = async () => {
     if (isLoading) return;
 
     const userMessage: Message = {
@@ -1140,15 +1107,96 @@ export default function ChatPanel({
       blocksSnapshot: blocks.map((block) => ({ ...block })),
     };
 
-    const planMessage: Message = {
-      id: uuidv4(),
+    // Add a placeholder assistant message so the loading spinner appears immediately
+    const assistantMessageId = uuidv4();
+    const assistantPlaceholder: Message = {
+      id: assistantMessageId,
       role: "assistant",
       content: "",
-      summary: "Detailed landing page plan ready",
-      plan: buildDetailedLandingPagePlan(designStyle, setupDetails),
     };
 
-    setMessages((prev) => [...prev, userMessage, planMessage]);
+    setMessages((prev) => [...prev, userMessage, assistantPlaceholder]);
+    setIsLoading(true);
+    setLoadingStatus({ phase: "planning" });
+    abortControllerRef.current = new AbortController();
+
+    try {
+      const apiKey = getApiKey();
+      const model = getModel();
+      const style = DESIGN_STYLES.find((item) => item.id === designStyle);
+
+      const response = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: abortControllerRef.current?.signal,
+        body: JSON.stringify({
+          mode: "detailed-plan",
+          apiKey,
+          model,
+          planDetails: {
+            brandName: setupDetails.brandName?.trim() || "Your brand",
+            productDescription: setupDetails.productDescription?.trim() || "A product",
+            designStyleLabel: style?.label || "Professional",
+            heroTitle: setupDetails.title?.trim() || "A strong value-focused hero headline",
+            subtitle: setupDetails.subtitle?.trim() || "A concise supporting message that explains the offer and why it matters.",
+            ctaText: setupDetails.ctaText?.trim() || "Get Started",
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to generate plan");
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No response stream");
+
+      const decoder = new TextDecoder();
+      let planContent = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        planContent += decoder.decode(value, { stream: true });
+      }
+
+      // Strip any markdown code fences the LLM might have added
+      planContent = planContent.replace(/^```[\w]*\n?/gm, "").replace(/^```$/gm, "").trim();
+
+      // Replace the placeholder with the finished plan message
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantMessageId
+            ? { ...m, summary: "Detailed landing page plan ready", plan: planContent }
+            : m,
+        ),
+      );
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        logger.action("Plan generation cancelled by user");
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMessageId
+              ? { ...m, summary: "⏹️ Plan generation cancelled" }
+              : m,
+          ),
+        );
+      } else {
+        const errorMsg = error instanceof Error ? error.message : "Something went wrong";
+        logger.error("ChatPanel", error);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMessageId
+              ? { ...m, summary: `Error generating plan: ${errorMsg}` }
+              : m,
+          ),
+        );
+      }
+    } finally {
+      setIsLoading(false);
+      setLoadingStatus({ phase: "idle" });
+      abortControllerRef.current = null;
+    }
   };
 
   const handlePlanEditStart = (message: Message) => {
@@ -1210,10 +1258,10 @@ export default function ChatPanel({
         prev.map((currentMessage) =>
           currentMessage.id === assistantMessage.id
             ? {
-                ...currentMessage,
-                content: `Built ${results.length} sections`,
-                summary: `Generated ${results.length} sections from the saved plan:\n${summaries}`,
-              }
+              ...currentMessage,
+              content: `Built ${results.length} sections`,
+              summary: `Generated ${results.length} sections from the saved plan:\n${summaries}`,
+            }
             : currentMessage,
         ),
       );
@@ -1225,10 +1273,10 @@ export default function ChatPanel({
           prev.map((currentMessage) =>
             currentMessage.id === assistantMessage.id
               ? {
-                  ...currentMessage,
-                  content: "",
-                  summary: "â¹ï¸ Request cancelled",
-                }
+                ...currentMessage,
+                content: "",
+                summary: "â¹ï¸ Request cancelled",
+              }
               : currentMessage,
           ),
         );
@@ -1240,10 +1288,10 @@ export default function ChatPanel({
           prev.map((currentMessage) =>
             currentMessage.id === assistantMessage.id
               ? {
-                  ...currentMessage,
-                  content: `Error: ${errorMsg}`,
-                  summary: `Error: ${errorMsg}`,
-                }
+                ...currentMessage,
+                content: `Error: ${errorMsg}`,
+                summary: `Error: ${errorMsg}`,
+              }
               : currentMessage,
           ),
         );
@@ -1349,6 +1397,10 @@ export default function ChatPanel({
 
   if (setupPhase === "details" && blocks.length === 0) {
     const selectedStyle = DESIGN_STYLES.find((s) => s.id === designStyle);
+    const productDescriptionLength = (
+      setupDetails.productDescription || ""
+    ).trim().length;
+    const canContinue = productDescriptionLength >= 50;
     return (
       <div className={`chat-panel ${isFullScreen ? "full-screen" : ""}`}>
         <div className="chat-messages">
@@ -1418,15 +1470,23 @@ export default function ChatPanel({
                 <label>Write few lines about your product</label>
                 <textarea
                   value={setupDetails.productDescription || ""}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    setTriedToProceed(false);
                     setSetupDetails((prev) => ({
                       ...prev,
                       productDescription: e.target.value,
-                    }))
-                  }
+                    }));
+                  }}
                   placeholder="Describe what your product does, who it is for, and why it matters."
                   rows={4}
                 />
+                <span
+                  className={`setup-field-hint ${canContinue ? "valid" : "invalid"} ${triedToProceed && !canContinue ? "tried" : ""}`}
+                >
+                  {canContinue
+                    ? "Looks good. You can continue."
+                    : `Write at least 50 characters to proceed (${productDescriptionLength}/50).`}
+                </span>
               </div>
             </div>
             <div className="setup-actions">
@@ -1437,8 +1497,15 @@ export default function ChatPanel({
                 ← Back
               </button>
               <button
-                onClick={handleSetupComplete}
+                onClick={() => {
+                  if (!canContinue) {
+                    setTriedToProceed(true);
+                    return;
+                  }
+                  handleSetupComplete();
+                }}
                 className="setup-continue-btn"
+                disabled={!canContinue}
               >
                 Start Building →
               </button>
@@ -1557,7 +1624,7 @@ export default function ChatPanel({
           </div>
         )}
 
-        {messages.map((message) => {
+        {messages.map((message, messageIndex) => {
           const isExpanded = expandedMessages.has(message.id);
           const isCurrentlyStreaming =
             isLoading && messages[messages.length - 1]?.id === message.id;
@@ -1576,7 +1643,7 @@ export default function ChatPanel({
                       </span>
                     )}
                     <p>{message.content}</p>
-                    {shouldShowRestoreButton(message, isLoading) && (
+                    {shouldShowRestoreButton(message, isLoading, messages, messageIndex) && (
                       <button
                         className="checkpoint-restore-btn"
                         title="Restore to this checkpoint"
@@ -1715,7 +1782,7 @@ export default function ChatPanel({
                                 .map((line, index) => {
                                   const diffClass =
                                     line.startsWith("---") ||
-                                    line.startsWith("+++")
+                                      line.startsWith("+++")
                                       ? "meta"
                                       : line.startsWith("+")
                                         ? "add"

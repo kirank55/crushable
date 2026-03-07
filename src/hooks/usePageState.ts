@@ -101,6 +101,24 @@ export function usePageState(projectId?: string) {
         }
     }, [blocks]);
 
+    const persistProject = useCallback((overrideMessages?: Message[]) => {
+        const id = currentProjectId || uuidv4();
+        const blocksToSave = isViewingOldVersion.current ? latestBlocksRef.current : blocksRef.current;
+        const project: Project = {
+            id,
+            name: projectName,
+            blocks: blocksToSave,
+            versions,
+            messages: overrideMessages ?? savedMessages,
+            designStyle,
+            updatedAt: Date.now(),
+        };
+        saveProject(project);
+        setProjectId(id);
+        setCurrentProjectId(id);
+        return id;
+    }, [currentProjectId, projectName, versions, savedMessages, designStyle]);
+
     const pushUndo = useCallback((snapshot: Block[]) => {
         setUndoStack((prev) => {
             const next = [...prev, snapshot];
@@ -282,6 +300,12 @@ export function usePageState(projectId?: string) {
         logger.action('handleSave (auto)', { projectId: id, projectName });
     }, [currentProjectId, projectName, blocks, versions, savedMessages, designStyle]);
 
+    const persistMessages = useCallback((messages: Message[]) => {
+        setSavedMessages(messages);
+        const id = persistProject(messages);
+        logger.action('persistMessages', { projectId: id, messageCount: messages.length });
+    }, [persistProject]);
+
     const handleLoad = useCallback((project: Project) => {
         logger.action('handleLoad', { id: project.id, name: project.name });
         isViewingOldVersion.current = false;
@@ -363,6 +387,6 @@ export function usePageState(projectId?: string) {
         importBlocks,
         undo,
         savedMessages,
-        setSavedMessages,
+        setSavedMessages: persistMessages,
     };
 }

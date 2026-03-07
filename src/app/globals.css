@@ -2173,11 +2173,34 @@ body {
   transition: border-color var(--transition);
 }
 
+.setup-field textarea {
+  padding: 10px 14px;
+  min-height: 96px;
+  resize: vertical;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 1.5;
+  outline: none;
+  transition: border-color var(--transition);
+}
+
 .setup-field input:focus {
   border-color: var(--accent);
 }
 
+.setup-field textarea:focus {
+  border-color: var(--accent);
+}
+
 .setup-field input::placeholder {
+  color: var(--text-muted);
+}
+
+.setup-field textarea::placeholder {
   color: var(--text-muted);
 }
 

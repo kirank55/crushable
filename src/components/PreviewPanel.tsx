@@ -142,6 +142,11 @@ ${'<'}/script>
 </html>`;
   }, [blocks]);
 
+  const previewDocKey = useMemo(
+    () => blocks.map((block) => `${block.id}:${block.html}`).join('|||'),
+    [blocks]
+  );
+
   // Full HTML document for code view
   const fullDocumentCode = useMemo(() => {
     if (blocks.length === 0) return '<!-- No sections yet. Start chatting to build your page. -->';
@@ -269,7 +274,7 @@ ${'<'}/script>
         <div className={`preview-container ${mobilePreview ? 'mobile' : ''}`}>
           <iframe
             ref={iframeRef}
-            key={blocks.length}
+            key={previewDocKey}
             srcDoc={htmlContent}
             title="Page Preview"
             sandbox="allow-scripts allow-same-origin"

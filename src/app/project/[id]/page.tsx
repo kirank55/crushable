@@ -71,6 +71,7 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
     const projectContext = useMemo(() => {
         const parts: string[] = [];
         if (projectDetails.brandName) parts.push(`Brand/Company Name: ${projectDetails.brandName}`);
+        if (projectDetails.productDescription) parts.push(`Product Description: ${projectDetails.productDescription}`);
         if (projectDetails.title) parts.push(`Hero Title: ${projectDetails.title}`);
         if (projectDetails.subtitle) parts.push(`Subtitle/Description: ${projectDetails.subtitle}`);
         if (projectDetails.ctaText) parts.push(`Primary CTA Button Text: ${projectDetails.ctaText}`);

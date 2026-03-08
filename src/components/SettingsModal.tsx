@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Settings as SettingsIcon, X, Key, Cpu, CheckCircle, AlertCircle } from 'lucide-react';
 import { getApiKey, setApiKey, getModel, setModel } from '@/lib/storage';
-import { FREE_MODEL } from '@/types';
+import { FREE_MODEL, getAvailableModels } from '@/types';
 import { logger } from '@/lib/logger';
 
 interface SettingsModalProps {
@@ -62,7 +62,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         }
     };
 
-
+    const availableModels = getAvailableModels(!!key.trim());
 
     if (!isOpen) return null;
 
@@ -101,14 +101,21 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             Model
                         </label>
                         <div className="model-grid">
-                            <button
-                                className="model-option active"
-                                title="Try available free models"
-                            >
-                                <span className="model-name">Free Models</span>
-                                <span className="model-badge free">FREE</span>
-                            </button>
+                            {availableModels.map((m) => (
+                                <button
+                                    key={m.id}
+                                    onClick={() => { setSelectedModel(m.id); setTestStatus('idle'); }}
+                                    className={`model-option ${selectedModel === m.id ? 'active' : ''}`}
+                                    title={m.free ? 'Try available free models' : `Requires API key`}
+                                >
+                                    <span className="model-name">{m.label}</span>
+                                    {m.free && <span className="model-badge free">FREE</span>}
+                                </button>
+                            ))}
                         </div>
+                        {!key.trim() && (
+                            <p className="setting-hint" style={{ marginTop: 6 }}>Add an API key above to unlock premium models (Claude, GPT-4o, Gemini)</p>
+                        )}
                     </div>
 
                     <div className="setting-actions">

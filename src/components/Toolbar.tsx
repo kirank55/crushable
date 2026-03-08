@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Download, Save, Settings, ArrowLeft, Plus, Trash2, Check, Upload, Smartphone, History, PanelLeftClose, Eye, Code, Terminal } from 'lucide-react';
+import { Download, Save, Settings, ArrowLeft, Plus, Trash2, Check, Upload, Smartphone, History, PanelLeftClose, Eye, Code, Terminal, HelpCircle } from 'lucide-react';
 import { downloadHTML } from '@/lib/export';
 import { getApiKey, getModel } from '@/lib/storage';
 import { Block, getAvailableModels } from '@/types';
@@ -22,9 +22,11 @@ interface ToolbarProps {
     onToggleMobilePreview?: () => void;
     onOpenVersions?: () => void;
     onHideChat?: () => void;
+    onOpenHelp?: () => void;
     chatVisible?: boolean;
     viewMode?: 'preview' | 'code' | 'console';
     onViewModeChange?: (mode: 'preview' | 'code' | 'console') => void;
+    settingsOpen?: boolean;
 }
 
 export default function Toolbar({
@@ -41,9 +43,11 @@ export default function Toolbar({
     onToggleMobilePreview,
     onOpenVersions,
     onHideChat,
+    onOpenHelp,
     chatVisible,
     viewMode,
     onViewModeChange,
+    settingsOpen,
 }: ToolbarProps) {
     const [isEditing, setIsEditing] = useState(false);
     const [editName, setEditName] = useState(projectName);
@@ -51,12 +55,13 @@ export default function Toolbar({
     const [showSaved, setShowSaved] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // Refresh model label on mount and when settings modal closes
     useEffect(() => {
         const model = getModel();
         const models = getAvailableModels();
         const info = models.find((m) => m.id === model);
         setModelLabel(info?.label || model);
-    }, []);
+    }, [settingsOpen]);
 
     const handleSave = () => {
         logger.action('Toolbar save');
@@ -70,6 +75,16 @@ export default function Toolbar({
             onRename(editName.trim());
         }
         setIsEditing(false);
+    };
+
+    const handleBackToProjects = () => {
+        if (isDirty) {
+            const confirmed = window.confirm('You have unsaved changes. Save before leaving?');
+            if (confirmed) {
+                onSave();
+            }
+        }
+        onOpenProjects();
     };
 
     const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -109,7 +124,7 @@ export default function Toolbar({
     return (
         <div className="toolbar">
             <div className="toolbar-left">
-                <button onClick={onOpenProjects} className="toolbar-btn" title="Back to Projects">
+                <button onClick={handleBackToProjects} className="toolbar-btn" title="Back to Projects">
                     <ArrowLeft size={18} />
                     <span className="btn-label">Projects</span>
                 </button>
@@ -209,7 +224,7 @@ export default function Toolbar({
 
 
                 <button
-                    onClick={() => downloadHTML(blocks)}
+                    onClick={() => downloadHTML(blocks, projectName)}
                     className="toolbar-btn download-btn"
                     disabled={blocks.length === 0}
                     title="Download HTML"
@@ -220,7 +235,15 @@ export default function Toolbar({
 
                 <div className="toolbar-divider" />
 
+                {onOpenHelp && (
+                    <button onClick={onOpenHelp} className="toolbar-btn help-btn" title="Help & Tips">
+                        <HelpCircle size={18} />
+                        <span className="btn-label">Help</span>
+                    </button>
+                )}
+
             </div>
         </div>
     );
 }
+

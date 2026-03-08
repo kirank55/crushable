@@ -11,6 +11,9 @@ import ChatPanel, { ProjectDetails } from '@/components/ChatPanel';
 import Toolbar from '@/components/Toolbar';
 import SettingsModal from '@/components/SettingsModal';
 import VersionsPanel from '@/components/VersionsPanel';
+import HelpModal from '@/components/HelpModal';
+import { createBlock } from '@/lib/blocks';
+import { parseImportedHtml } from '@/lib/import';
 import { logger } from '@/lib/logger';
 
 export default function BuilderPage({ params }: { params: Promise<{ id: string }> }) {
@@ -59,6 +62,7 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
     const [mobilePreview, setMobilePreview] = useState(false);
     const [chatResetKey, setChatResetKey] = useState(0);
     const [viewMode, setViewMode] = useState<'preview' | 'code' | 'console'>('preview');
+    const [helpOpen, setHelpOpen] = useState(false);
 
     const designStylePrompt = useMemo(() => {
         if (!designStyle) return undefined;
@@ -119,9 +123,11 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
                 onToggleMobilePreview={() => setMobilePreview(!mobilePreview)}
                 onOpenVersions={() => setVersionsOpen(true)}
                 onHideChat={() => setChatVisible(false)}
+                onOpenHelp={() => setHelpOpen(true)}
                 chatVisible={chatVisible}
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
+                settingsOpen={settingsOpen}
             />
 
             <div className="builder-main">
@@ -171,11 +177,16 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
                         designStyle={designStyle}
                         viewMode={viewMode}
                         onCodeSave={(editedHtml) => {
-                            // Replace all blocks with the edited HTML as a single block
-                            const { createBlock } = require('@/lib/blocks');
-                            const newBlock = createBlock(editedHtml);
-                            clearAll();
-                            addBlockSmart(newBlock);
+                            // Parse the edited HTML back into individual section blocks
+                            const parsed = parseImportedHtml(`<body>${editedHtml}</body>`);
+                            if (parsed.length > 0) {
+                                clearAll();
+                                parsed.forEach(block => addBlockSmart(block));
+                            } else {
+                                // Fallback: treat as single block if no sections found
+                                clearAll();
+                                addBlockSmart(createBlock(editedHtml));
+                            }
                             createVersionSnapshot('Manual code edit');
                         }}
                     />
@@ -193,6 +204,11 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
                 versions={versions}
                 onLoadVersion={loadVersion}
                 onRestoreCurrent={restoreCurrentBlocks}
+            />
+
+            <HelpModal
+                isOpen={helpOpen}
+                onClose={() => setHelpOpen(false)}
             />
         </div>
     );

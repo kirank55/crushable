@@ -610,9 +610,9 @@ body {
   align-items: center;
   gap: 6px;
   padding: 8px 16px;
-  background: var(--accent);
-  color: white;
-  border: none;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-light);
   border-radius: var(--radius);
   cursor: pointer;
   font-size: 13px;
@@ -624,7 +624,8 @@ body {
 }
 
 .retry-btn:hover {
-  background: var(--accent-hover);
+  background: var(--bg-hover);
+  border-color: var(--accent);
   transform: translateY(-1px);
 }
 
@@ -691,12 +692,12 @@ body {
 
 .diff-line.add {
   background: rgba(34, 197, 94, 0.16);
-  color: #166534;
+  color: #4ade80;
 }
 
 .diff-line.remove {
   background: rgba(239, 68, 68, 0.16);
-  color: #991b1b;
+  color: #f87171;
 }
 
 .diff-line.context {
@@ -1609,7 +1610,7 @@ body {
 }
 
 .btn-primary:hover {
-  background: var(--bg-primary-hover);
+  background: var(--bg-hover);
 }
 
 /* ========================================
@@ -2345,4 +2346,87 @@ body {
   .toolbar-btn .btn-label {
     display: none;
   }
+}
+
+/* ========================================
+   Help Modal
+   ======================================== */
+
+.help-btn:hover {
+  border-color: #60a5fa;
+  color: #60a5fa;
+}
+
+.help-modal {
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.help-body {
+  overflow-y: auto;
+  max-height: 60vh;
+}
+
+.help-section {
+  margin-bottom: 20px;
+}
+
+.help-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.help-section ul {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.help-section li {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  padding-left: 12px;
+  border-left: 2px solid var(--border);
+}
+
+.help-section li strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.help-section kbd {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  color: var(--text-primary);
+  margin: 0 2px;
+}
+
+.help-footer {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.help-footer p {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.5;
 }

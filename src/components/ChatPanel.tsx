@@ -417,9 +417,10 @@ export default function ChatPanel({
     lastPersistedMessageSignatureRef.current = messageSignature;
   }, [messages, isLoading, onMessagesChange]);
 
-  useEffect(() => {
-    if (designStyle && setupPhase === "design") setSetupPhase("details");
-  }, [designStyle, setupPhase]);
+  // Removed: useEffect that auto-advanced setupPhase from "design" to "details"
+  // whenever designStyle was truthy. This caused the Back button to not work
+  // because clicking Back set phase to "design" but the effect immediately
+  // pushed it back to "details". handleDesignStyleSelect already handles this.
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1503,7 +1504,10 @@ export default function ChatPanel({
             </div>
             <div className="setup-actions">
               <button
-                onClick={() => setSetupPhase("design")}
+                onClick={() => {
+                  onSetDesignStyle('');
+                  setSetupPhase("design");
+                }}
                 className="skip-design-btn"
               >
                 ← Back
@@ -1862,16 +1866,7 @@ export default function ChatPanel({
                     }}
                     className={`select-dropdown-item ${!selectedBlockId ? "active" : ""}`}
                   >
-                    <Plus size={14} /> Create New Section
-                  </button>
-                  <button
-                    onClick={() => {
-                      onClearSelection();
-                      setShowSelectDropdown(false);
-                    }}
-                    className="select-dropdown-item"
-                  >
-                    <Ban size={14} /> No Selection
+                    <Plus size={14} /> New Section (no selection)
                   </button>
                   {blocks.map((block) => (
                     <button

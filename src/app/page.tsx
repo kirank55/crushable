@@ -1,20 +1,17 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Project } from '@/types';
 import { getProjects, deleteProject } from '@/lib/storage';
+import { formatRelativeDate } from '@/lib/date';
 import { Sparkles, Plus, Trash2, Clock, Settings } from 'lucide-react';
 import SettingsModal from '@/components/SettingsModal';
 
 export default function HomePage() {
   const router = useRouter();
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [projects, setProjects] = useState<Project[]>(() => getProjects());
   const [settingsOpen, setSettingsOpen] = useState(false);
-
-  useEffect(() => {
-    setProjects(getProjects());
-  }, []);
 
   const handleDelete = useCallback((id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -23,21 +20,6 @@ export default function HomePage() {
       setProjects(getProjects());
     }
   }, []);
-
-  const formatDate = (timestamp: number) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
-  };
 
   return (
     <div className="project-fullscreen">
@@ -74,7 +56,7 @@ export default function HomePage() {
                     <span className="project-card-name">{project.name}</span>
                     <span className="project-card-meta">
                       <Clock size={12} />
-                      {formatDate(project.updatedAt)}
+                      {formatRelativeDate(project.updatedAt)}
                       <span className="project-card-blocks">
                         {project.blocks.length} section{project.blocks.length !== 1 ? 's' : ''}
                       </span>

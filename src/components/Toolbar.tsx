@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Download, Save, Settings, ArrowLeft, Plus, Trash2, Check, Upload, Smartphone, History, PanelLeftClose, Eye, Code, Terminal, HelpCircle } from 'lucide-react';
 import { downloadHTML } from '@/lib/export';
 import { getApiKey, getModel } from '@/lib/storage';
@@ -26,7 +26,6 @@ interface ToolbarProps {
     chatVisible?: boolean;
     viewMode?: 'preview' | 'code' | 'console';
     onViewModeChange?: (mode: 'preview' | 'code' | 'console') => void;
-    settingsOpen?: boolean;
 }
 
 export default function Toolbar({
@@ -47,21 +46,36 @@ export default function Toolbar({
     chatVisible,
     viewMode,
     onViewModeChange,
-    settingsOpen,
 }: ToolbarProps) {
     const [isEditing, setIsEditing] = useState(false);
     const [editName, setEditName] = useState(projectName);
-    const [modelLabel, setModelLabel] = useState('');
+    const [modelLabel, setModelLabel] = useState(() => {
+        const model = getModel();
+        const models = getAvailableModels(!!getApiKey().trim());
+        const info = models.find((m) => m.id === model);
+        return info?.label || model;
+    });
     const [showSaved, setShowSaved] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Refresh model label on mount and when settings modal closes
-    useEffect(() => {
+    const syncModelLabel = useCallback(() => {
         const model = getModel();
-        const models = getAvailableModels();
+        const models = getAvailableModels(!!getApiKey().trim());
         const info = models.find((m) => m.id === model);
         setModelLabel(info?.label || model);
-    }, [settingsOpen]);
+    }, []);
+
+    useEffect(() => {
+        const handleSettingsChanged = () => syncModelLabel();
+
+        window.addEventListener('storage', handleSettingsChanged);
+        window.addEventListener('crushable:settings-changed', handleSettingsChanged);
+
+        return () => {
+            window.removeEventListener('storage', handleSettingsChanged);
+            window.removeEventListener('crushable:settings-changed', handleSettingsChanged);
+        };
+    }, [syncModelLabel]);
 
     const handleSave = () => {
         logger.action('Toolbar save');
@@ -78,13 +92,16 @@ export default function Toolbar({
     };
 
     const handleBackToProjects = () => {
-        if (isDirty) {
-            const confirmed = window.confirm('You have unsaved changes. Save before leaving?');
-            if (confirmed) {
-                onSave();
-            }
-        }
         onOpenProjects();
+    };
+
+    const handleClearAll = () => {
+        if (blocks.length === 0) return;
+
+        const confirmed = window.confirm('Clear all sections from this project?');
+        if (!confirmed) return;
+
+        onClearAll();
     };
 
     const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -205,6 +222,16 @@ export default function Toolbar({
 
                 <div className="toolbar-divider" />
 
+                <button onClick={onNewProject} className="toolbar-btn" title="New Project">
+                    <Plus size={18} />
+                    <span className="btn-label">New</span>
+                </button>
+
+                <button onClick={handleClearAll} className="toolbar-btn" title="Clear All" disabled={blocks.length === 0}>
+                    <Trash2 size={18} />
+                    <span className="btn-label">Clear</span>
+                </button>
+
                 <button onClick={handleSave} className="toolbar-btn save-btn" title="Save">
                     {showSaved ? <Check size={18} /> : <Save size={18} />}
                     <span className="btn-label">{showSaved ? 'Saved!' : 'Save'}</span>
@@ -234,6 +261,11 @@ export default function Toolbar({
                 </button>
 
                 <div className="toolbar-divider" />
+
+                <button onClick={onOpenSettings} className="toolbar-btn settings-btn" title={modelLabel || 'Model Settings'}>
+                    <Settings size={18} />
+                    <span className="btn-label">{modelLabel || 'Model'}</span>
+                </button>
 
                 {onOpenHelp && (
                     <button onClick={onOpenHelp} className="toolbar-btn help-btn" title="Help & Tips">

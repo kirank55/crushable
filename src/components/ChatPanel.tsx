@@ -9,13 +9,9 @@ import {
   Send,
   Loader2,
   Sparkles,
-  PanelLeftClose,
-  Smartphone,
-  History,
   ChevronDown,
   ChevronRight,
   Code,
-  Undo2,
   Zap,
   CheckCircle2,
   Link2,
@@ -31,7 +27,6 @@ import {
   Layout,
   Grid3x3,
   DollarSign,
-  Ban,
   Cpu,
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
@@ -47,15 +42,10 @@ interface ChatPanelProps {
   onUpdateBlock: (id: string, html: string) => void;
   onSelectBlock: (id: string | null) => void;
   onClearSelection: () => void;
-  onHide: () => void;
-  onToggleMobilePreview: () => void;
-  onOpenVersions: () => void;
   onVersionCreated: (prompt: string) => void;
   onSetDesignStyle: (style: string) => void;
   onSetProjectDetails: (details: ProjectDetails) => void;
   onOpenSettings: () => void;
-  onUndo: () => string | null;
-  canUndo: boolean;
   designStylePrompt: string | undefined;
   projectContext: string | undefined;
   onRestoreBlocks: (blocks: Block[]) => void;
@@ -83,6 +73,15 @@ type PlannedSection = {
   title: string;
   details?: string;
 };
+
+function formatMessageTime(timestamp?: number): string | null {
+  if (!timestamp) return null;
+
+  return new Date(timestamp).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
 function buildUnifiedDiff(beforeText: string, afterText: string): string {
   const before = beforeText.replace(/\r\n/g, "\n").split("\n");
@@ -326,15 +325,10 @@ export default function ChatPanel({
   onUpdateBlock,
   onSelectBlock,
   onClearSelection,
-  onHide,
-  onToggleMobilePreview,
-  onOpenVersions,
   onVersionCreated,
   onSetDesignStyle,
   onSetProjectDetails,
   onOpenSettings,
-  onUndo,
-  canUndo,
   designStylePrompt,
   projectContext,
   onRestoreBlocks,
@@ -440,6 +434,19 @@ export default function ChatPanel({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showSelectDropdown]);
 
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+
+    input.style.height = "auto";
+    const computed = window.getComputedStyle(input);
+    const lineHeight = Number.parseFloat(computed.lineHeight) || 20;
+    const maxHeight = lineHeight * 6 + 20;
+
+    input.style.height = `${Math.min(input.scrollHeight, maxHeight)}px`;
+    input.style.overflowY = input.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, [input]);
+
   const toggleMessageExpanded = (messageId: string) => {
     setExpandedMessages((prev) => {
       const next = new Set(prev);
@@ -535,6 +542,7 @@ export default function ChatPanel({
         role: "assistant",
         content: "",
         summary: implementationSummary,
+        timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, implMsg]);
 
@@ -548,6 +556,7 @@ export default function ChatPanel({
           id: sectionProgressMessageId,
           role: "assistant",
           content: "",
+          timestamp: Date.now(),
         };
         setMessages((prev) => [...prev, sectionProgressMsg]);
 
@@ -653,6 +662,7 @@ export default function ChatPanel({
         role: "assistant",
         content: "",
         summary: `Planning complete — ${sections.length} sections planned:\n${planSummary}`,
+        timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, planMsg]);
 
@@ -665,6 +675,7 @@ export default function ChatPanel({
         role: "assistant",
         content: "",
         summary: `🚀 **Now implementing!** Building all ${sections.length} sections one by one…`,
+        timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, implMsg]);
 
@@ -679,6 +690,7 @@ export default function ChatPanel({
           id: sectionProgressMessageId,
           role: "assistant",
           content: "",
+          timestamp: Date.now(),
         };
         setMessages((prev) => [...prev, sectionProgressMsg]);
 
@@ -757,6 +769,7 @@ export default function ChatPanel({
         role: "user",
         content: visiblePrompt,
         blocksSnapshot: blocks.map((b) => ({ ...b })),
+        timestamp: Date.now(),
       };
       const explanation = buildPreviousChangeExplanation(messages);
       const assistantMessage: Message = {
@@ -766,6 +779,7 @@ export default function ChatPanel({
         summary:
           explanation ||
           "There is no previous completed change to explain yet.",
+        timestamp: Date.now(),
       };
 
       setMessages((prev) => [...prev, userMessage, assistantMessage]);
@@ -869,6 +883,7 @@ export default function ChatPanel({
       content: visiblePrompt,
       blockId: currentSelectedBlock?.id || undefined,
       blocksSnapshot: blocks.map((b) => ({ ...b })),
+      timestamp: Date.now(),
     };
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
@@ -880,6 +895,7 @@ export default function ChatPanel({
       role: "assistant",
       content: "",
       blockId: currentSelectedBlock?.id || undefined,
+      timestamp: Date.now(),
     };
     setMessages((prev) => [...prev, assistantMessage]);
 
@@ -940,6 +956,7 @@ export default function ChatPanel({
             role: "assistant",
             content: diff,
             summary: `✅ Updated ${block.label} (${i + 1}/${editBlocks.length}): ${result.summary}`,
+            timestamp: Date.now(),
           };
           setMessages((prev) => [...prev, progressMsg]);
 
@@ -1096,7 +1113,7 @@ export default function ChatPanel({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey || !e.shiftKey)) {
       e.preventDefault();
       handleSubmit();
     }
@@ -1115,6 +1132,7 @@ export default function ChatPanel({
       role: "user",
       content: "User clicked on Generate Landing Page",
       blocksSnapshot: blocks.map((block) => ({ ...block })),
+      timestamp: Date.now(),
     };
 
     // Add a placeholder assistant message so the loading spinner appears immediately
@@ -1123,6 +1141,7 @@ export default function ChatPanel({
       id: assistantMessageId,
       role: "assistant",
       content: "",
+      timestamp: Date.now(),
     };
 
     setMessages((prev) => [...prev, userMessage, assistantPlaceholder]);
@@ -1245,6 +1264,7 @@ export default function ChatPanel({
       role: "user",
       content: "Proceed with landing page plan",
       blocksSnapshot: blocks.map((block) => ({ ...block })),
+      timestamp: Date.now(),
     };
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
@@ -1254,6 +1274,7 @@ export default function ChatPanel({
       id: uuidv4(),
       role: "assistant",
       content: "",
+      timestamp: Date.now(),
     };
     setMessages((prev) => [...prev, assistantMessage]);
 
@@ -1622,6 +1643,7 @@ export default function ChatPanel({
                               role: "assistant",
                               content: "",
                               summary: `Restored to checkpoint: "${message.content.slice(0, 50)}${message.content.length > 50 ? "…" : ""}"`,
+                              timestamp: Date.now(),
                             };
                             setMessages((prev) => [...prev, restoreMsg]);
                           }
@@ -1630,6 +1652,9 @@ export default function ChatPanel({
                         <RotateCcw size={12} />
                         Restore
                       </button>
+                    )}
+                    {formatMessageTime(message.timestamp) && (
+                      <div className="message-time">{formatMessageTime(message.timestamp)}</div>
                     )}
                   </>
                 ) : (
@@ -1797,6 +1822,9 @@ export default function ChatPanel({
                         )}
                       </div>
                     ) : null}
+                    {formatMessageTime(message.timestamp) && (
+                      <div className="message-time">{formatMessageTime(message.timestamp)}</div>
+                    )}
                   </div>
                 )}
                 {/* Try Again button for error messages */}
@@ -1895,6 +1923,9 @@ export default function ChatPanel({
               {isLoading ? <Square size={16} /> : <Send size={18} />}
             </button>
           </div>
+        </div>
+        <div className="input-shortcuts-hint">
+          Enter sends, Shift+Enter adds a new line, Ctrl/Cmd+S saves, Ctrl/Cmd+Z undoes, Esc clears selection.
         </div>
       </div>
     </div>

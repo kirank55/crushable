@@ -24,12 +24,13 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
         blocks,
         selectedBlockId,
         currentProjectId,
+        currentVersionIndex,
         isDirty,
+        isReady,
         projectName,
         versions,
         designStyle,
         canUndo,
-        addBlock,
         addBlockSmart,
         updateBlock,
         selectBlock,
@@ -48,6 +49,14 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
         savedMessages,
         setSavedMessages,
     } = usePageState(id);
+
+    const isEditableTarget = useCallback((target: EventTarget | null) => {
+        const element = target as HTMLElement | null;
+        if (!element) return false;
+
+        const tagName = element.tagName;
+        return element.isContentEditable || tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT';
+    }, []);
 
     // Redirect /project/new to /project/[actual-id] once ID is assigned
     useEffect(() => {
@@ -95,9 +104,54 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
     }, [handleNew, router]);
 
     const handleBackToProjects = useCallback(() => {
-        handleSave();
+        if (isDirty) {
+            const shouldSave = window.confirm('You have unsaved changes. Press OK to save before leaving.');
+            if (shouldSave) {
+                handleSave();
+            } else {
+                const shouldDiscard = window.confirm('Leave this project without saving?');
+                if (!shouldDiscard) return;
+            }
+        }
         router.push('/');
-    }, [handleSave, router]);
+    }, [handleSave, isDirty, router]);
+
+    useEffect(() => {
+        const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+            if (!isDirty) return;
+            event.preventDefault();
+            event.returnValue = '';
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [isDirty]);
+
+    useEffect(() => {
+        const handleGlobalKeyDown = (event: KeyboardEvent) => {
+            const isSaveShortcut = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's';
+            const isUndoShortcut = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z';
+
+            if (isSaveShortcut) {
+                event.preventDefault();
+                handleSave();
+                return;
+            }
+
+            if (event.key === 'Escape') {
+                clearSelection();
+                return;
+            }
+
+            if (isUndoShortcut && !isEditableTarget(event.target) && canUndo) {
+                event.preventDefault();
+                undo();
+            }
+        };
+
+        window.addEventListener('keydown', handleGlobalKeyDown);
+        return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+    }, [canUndo, clearSelection, handleSave, isEditableTarget, undo]);
 
     const handleSetProjectDetails = useCallback((details: ProjectDetails) => {
         logger.action('Project details set', details);
@@ -106,6 +160,17 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
             handleRename(details.brandName);
         }
     }, [handleRename]);
+
+    if (!isReady) {
+        return (
+            <div className="builder-loading">
+                <div className="builder-loading-card">
+                    <span className="builder-loading-spinner" />
+                    <p>Loading project…</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="builder-layout">
@@ -127,7 +192,6 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
                 chatVisible={chatVisible}
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
-                settingsOpen={settingsOpen}
             />
 
             <div className="builder-main">
@@ -142,15 +206,10 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
                         onUpdateBlock={updateBlock}
                         onSelectBlock={selectBlock}
                         onClearSelection={clearSelection}
-                        onHide={() => setChatVisible(false)}
-                        onToggleMobilePreview={() => setMobilePreview(!mobilePreview)}
-                        onOpenVersions={() => setVersionsOpen(true)}
                         onVersionCreated={(prompt) => createVersionSnapshot(prompt)}
                         onSetDesignStyle={setDesignStyle}
                         onSetProjectDetails={handleSetProjectDetails}
                         onOpenSettings={() => setSettingsOpen(true)}
-                        onUndo={undo}
-                        canUndo={canUndo}
                         designStylePrompt={designStylePrompt}
                         projectContext={projectContext}
                         onRestoreBlocks={reorderBlocks}
@@ -172,7 +231,6 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
                 {!isChatFullScreen && (
                     <PreviewPanel
                         blocks={blocks}
-                        selectedBlockId={selectedBlockId}
                         mobilePreview={mobilePreview}
                         designStyle={designStyle}
                         viewMode={viewMode}
@@ -202,6 +260,7 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
                 isOpen={versionsOpen}
                 onClose={() => setVersionsOpen(false)}
                 versions={versions}
+                currentVersionIndex={currentVersionIndex}
                 onLoadVersion={loadVersion}
                 onRestoreCurrent={restoreCurrentBlocks}
             />

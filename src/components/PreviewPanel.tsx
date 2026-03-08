@@ -12,7 +12,6 @@ interface ConsoleLine {
 
 interface PreviewPanelProps {
   blocks: Block[];
-  selectedBlockId: string | null;
   mobilePreview: boolean;
   designStyle?: string;
   viewMode: 'preview' | 'code' | 'console';
@@ -28,9 +27,8 @@ const STYLE_BODY_BG: Record<string, string> = {
   elegant: '#1e293b',
 };
 
-export default function PreviewPanel({ blocks, selectedBlockId, mobilePreview, designStyle, viewMode, onCodeSave }: PreviewPanelProps) {
+export default function PreviewPanel({ blocks, mobilePreview, designStyle, viewMode, onCodeSave }: PreviewPanelProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [mounted, setMounted] = useState(false);
   const [consoleLogs, setConsoleLogs] = useState<ConsoleLine[]>([]);
   const consoleEndRef = useRef<HTMLDivElement>(null);
   const codeRef = useRef<HTMLElement>(null);
@@ -39,10 +37,6 @@ export default function PreviewPanel({ blocks, selectedBlockId, mobilePreview, d
   const editRef = useRef<HTMLTextAreaElement>(null);
   const editHighlightRef = useRef<HTMLPreElement>(null);
   const [codeCopied, setCodeCopied] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   // Listen for console messages from the iframe
   useEffect(() => {
@@ -140,7 +134,7 @@ ${blocks.length === 0 ? `
 ${'<'}/script>
 </body>
 </html>`;
-  }, [blocks]);
+  }, [blocks, designStyle]);
 
   const previewDocKey = useMemo(
     () => blocks.map((block) => `${block.id}:${block.html}`).join('|||'),
@@ -230,16 +224,6 @@ ${'<'}/script>
     const d = new Date(ts);
     return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`;
   };
-
-  if (!mounted) {
-    return (
-      <div className="preview-panel">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8' }}>
-          Loading preview...
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="preview-panel">

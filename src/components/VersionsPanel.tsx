@@ -1,12 +1,14 @@
 'use client';
 
 import { Version } from '@/types';
-import { X, Clock, History, RotateCcw } from 'lucide-react';
+import { X, Clock, History, RotateCcw, Sparkles } from 'lucide-react';
+import { formatRelativeDate } from '@/lib/date';
 
 interface VersionsPanelProps {
     isOpen: boolean;
     onClose: () => void;
     versions: Version[];
+    currentVersionIndex: number | null;
     onLoadVersion: (version: Version, index?: number) => void;
     onRestoreCurrent?: () => void;
 }
@@ -15,22 +17,10 @@ export default function VersionsPanel({
     isOpen,
     onClose,
     versions,
+    currentVersionIndex,
     onLoadVersion,
     onRestoreCurrent,
 }: VersionsPanelProps) {
-    const formatDate = (timestamp: number) => {
-        const date = new Date(timestamp);
-        const now = new Date();
-        const diffMs = now.getTime() - date.getTime();
-        const diffMins = Math.floor(diffMs / 60000);
-        const diffHours = Math.floor(diffMs / 3600000);
-
-        if (diffMins < 1) return 'Just now';
-        if (diffMins < 60) return `${diffMins}m ago`;
-        if (diffHours < 24) return `${diffHours}h ago`;
-        return date.toLocaleDateString();
-    };
-
     return (
         <>
             {isOpen && <div className="sidebar-overlay" onClick={onClose} />}
@@ -48,8 +38,9 @@ export default function VersionsPanel({
                 <div className="versions-list">
                     {versions.length === 0 ? (
                         <div className="no-versions">
+                            <Sparkles size={26} strokeWidth={1.5} />
                             <p>No versions yet</p>
-                            <p className="hint">Versions are created automatically after each generation.</p>
+                            <p className="hint">Generate or edit a section and Crushable will snapshot the page automatically.</p>
                         </div>
                     ) : (
                         <>
@@ -57,7 +48,7 @@ export default function VersionsPanel({
                             {onRestoreCurrent && (
                                 <button
                                     onClick={() => { onRestoreCurrent(); onClose(); }}
-                                    className="version-item current"
+                                    className={`version-item current ${currentVersionIndex === null ? 'active' : ''}`}
                                 >
                                     <div className="version-info">
                                         <span className="version-label">
@@ -77,7 +68,7 @@ export default function VersionsPanel({
                                     <button
                                         key={version.id}
                                         onClick={() => { onLoadVersion(version, actualIndex); onClose(); }}
-                                        className={`version-item ${revIndex === 0 ? 'latest' : ''}`}
+                                        className={`version-item ${revIndex === 0 ? 'latest' : ''} ${currentVersionIndex === actualIndex ? 'active' : ''}`}
                                     >
                                         <div className="version-info">
                                             <span className="version-label">
@@ -86,7 +77,7 @@ export default function VersionsPanel({
                                             </span>
                                             <span className="version-meta">
                                                 <Clock size={12} />
-                                                {formatDate(version.timestamp)}
+                                                {formatRelativeDate(version.timestamp)}
                                                 <span className="version-blocks">{version.blocks.length} section{version.blocks.length !== 1 ? 's' : ''}</span>
                                             </span>
                                             {version.prompt && (

@@ -19,11 +19,16 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
 
     useEffect(() => {
-        if (isOpen) {
+        if (!isOpen) return;
+
+        const frame = window.requestAnimationFrame(() => {
             setKey(getApiKey());
             setSelectedModel(getModel());
             setTestStatus('idle');
-        }
+            setTestMessage('');
+        });
+
+        return () => window.cancelAnimationFrame(frame);
     }, [isOpen]);
 
     const handleSave = () => {

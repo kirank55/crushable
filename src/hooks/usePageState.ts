@@ -3,10 +3,38 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Block, Project, Version, Message } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
-import { saveProject, loadProject, getCurrentProjectId, setCurrentProjectId } from '@/lib/storage';
+import {
+    saveProject,
+    loadProject,
+    getCurrentProjectId as getStoredCurrentProjectId,
+    setCurrentProjectId as setStoredCurrentProjectId,
+} from '@/lib/storage';
 import { logger } from '@/lib/logger';
 
 const MAX_UNDO_STACK = 20;
+const DEFAULT_PROJECT_NAME = 'Untitled Project';
+
+function hasMeaningfulProjectContent({
+    blocks,
+    messages,
+    designStyle,
+    projectName,
+    versions,
+}: {
+    blocks: Block[];
+    messages: Message[];
+    designStyle?: string;
+    projectName: string;
+    versions: Version[];
+}): boolean {
+    return (
+        blocks.length > 0 ||
+        messages.length > 0 ||
+        versions.length > 0 ||
+        !!designStyle ||
+        projectName.trim() !== DEFAULT_PROJECT_NAME
+    );
+}
 
 export function usePageState(projectId?: string) {
     const [blocks, setBlocks] = useState<Block[]>([]);
@@ -19,6 +47,7 @@ export function usePageState(projectId?: string) {
     const [designStyle, setDesignStyleState] = useState<string | undefined>(undefined);
     const [undoStack, setUndoStack] = useState<Block[][]>([]);
     const [savedMessages, setSavedMessages] = useState<Message[]>([]);
+    const [isReady, setIsReady] = useState(false);
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const blocksRef = useRef<Block[]>([]);
     // Separate ref for the "latest working state" — NOT overwritten by version browsing
@@ -27,6 +56,8 @@ export function usePageState(projectId?: string) {
 
     // Load project on mount based on projectId prop
     useEffect(() => {
+        setIsReady(false);
+
         if (projectId && projectId !== 'new') {
             // Load a specific project by ID
             const project = loadProject(projectId);
@@ -36,7 +67,7 @@ export function usePageState(projectId?: string) {
                 setProjectName(project.name);
                 setVersions(project.versions || []);
                 setDesignStyleState(project.designStyle);
-                setCurrentProjectId(project.id);
+                setStoredCurrentProjectId(project.id);
                 setSavedMessages(project.messages || []);
                 latestBlocksRef.current = [...project.blocks];
                 isViewingOldVersion.current = false;
@@ -45,15 +76,22 @@ export function usePageState(projectId?: string) {
         } else if (projectId === 'new') {
             // Create a new project
             const id = uuidv4();
+            setBlocks([]);
             setProjectId(id);
-            setProjectName('Untitled Project');
-            setCurrentProjectId(id);
+            setProjectName(DEFAULT_PROJECT_NAME);
+            setVersions([]);
+            setDesignStyleState(undefined);
+            setSelectedBlockId(null);
+            setSavedMessages([]);
+            setUndoStack([]);
+            setIsDirty(false);
+            setStoredCurrentProjectId(null);
             latestBlocksRef.current = [];
             isViewingOldVersion.current = false;
             logger.action('Created new project via route', { id });
         } else {
             // Fallback: load last project (for backward compat)
-            const lastId = getCurrentProjectId();
+            const lastId = getStoredCurrentProjectId();
             if (lastId) {
                 const project = loadProject(lastId);
                 if (project) {
@@ -63,13 +101,14 @@ export function usePageState(projectId?: string) {
                     setVersions(project.versions || []);
                     setDesignStyleState(project.designStyle);
                     setSavedMessages(project.messages || []);
+                    setStoredCurrentProjectId(project.id);
                     latestBlocksRef.current = [...project.blocks];
                     isViewingOldVersion.current = false;
                     logger.action('Loaded last project', { id: project.id, name: project.name });
                 }
             }
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        setIsReady(true);
     }, [projectId]);
 
     // Auto-save every 2 seconds when dirty
@@ -104,18 +143,31 @@ export function usePageState(projectId?: string) {
     const persistProject = useCallback((overrideMessages?: Message[]) => {
         const id = currentProjectId || uuidv4();
         const blocksToSave = isViewingOldVersion.current ? latestBlocksRef.current : blocksRef.current;
+        const messagesToSave = overrideMessages ?? savedMessages;
+
+        if (!hasMeaningfulProjectContent({
+            blocks: blocksToSave,
+            messages: messagesToSave,
+            designStyle,
+            projectName,
+            versions,
+        })) {
+            setStoredCurrentProjectId(null);
+            return null;
+        }
+
         const project: Project = {
             id,
             name: projectName,
             blocks: blocksToSave,
             versions,
-            messages: overrideMessages ?? savedMessages,
+            messages: messagesToSave,
             designStyle,
             updatedAt: Date.now(),
         };
         saveProject(project);
         setProjectId(id);
-        setCurrentProjectId(id);
+        setStoredCurrentProjectId(id);
         return id;
     }, [currentProjectId, projectName, versions, savedMessages, designStyle]);
 
@@ -284,6 +336,19 @@ export function usePageState(projectId?: string) {
         const id = currentProjectId || uuidv4();
         // When browsing an old version, save the real working state — not the viewed version's blocks
         const blocksToSave = isViewingOldVersion.current ? latestBlocksRef.current : blocks;
+        if (!hasMeaningfulProjectContent({
+            blocks: blocksToSave,
+            messages: savedMessages,
+            designStyle,
+            projectName,
+            versions,
+        })) {
+            setStoredCurrentProjectId(null);
+            setIsDirty(false);
+            logger.action('handleSave skipped empty project');
+            return;
+        }
+
         const project: Project = {
             id,
             name: projectName,
@@ -295,7 +360,7 @@ export function usePageState(projectId?: string) {
         };
         saveProject(project);
         setProjectId(id);
-        setCurrentProjectId(id);
+        setStoredCurrentProjectId(id);
         setIsDirty(false);
         logger.action('handleSave (auto)', { projectId: id, projectName });
     }, [currentProjectId, projectName, blocks, versions, savedMessages, designStyle]);
@@ -303,7 +368,7 @@ export function usePageState(projectId?: string) {
     const persistMessages = useCallback((messages: Message[]) => {
         setSavedMessages(messages);
         const id = persistProject(messages);
-        logger.action('persistMessages', { projectId: id, messageCount: messages.length });
+        logger.action('persistMessages', { projectId: id ?? '(skipped empty)', messageCount: messages.length });
     }, [persistProject]);
 
     const handleLoad = useCallback((project: Project) => {
@@ -316,7 +381,7 @@ export function usePageState(projectId?: string) {
         setVersions(project.versions || []);
         setCurrentVersionIndex(null);
         setDesignStyleState(project.designStyle);
-        setCurrentProjectId(project.id);
+        setStoredCurrentProjectId(project.id);
         setSelectedBlockId(null);
         setSavedMessages(project.messages || []);
         setUndoStack([]);
@@ -330,14 +395,15 @@ export function usePageState(projectId?: string) {
         latestBlocksRef.current = [];
         setBlocks([]);
         setProjectId(id);
-        setProjectName('Untitled Project');
+        setProjectName(DEFAULT_PROJECT_NAME);
         setVersions([]);
         setCurrentVersionIndex(null);
         setDesignStyleState(undefined);
-        setCurrentProjectId(id);
+        setSavedMessages([]);
         setSelectedBlockId(null);
         setUndoStack([]);
         setIsDirty(false);
+        setStoredCurrentProjectId(null);
     }, []);
 
     const handleRename = useCallback((name: string) => {
@@ -363,7 +429,9 @@ export function usePageState(projectId?: string) {
         blocks,
         selectedBlockId,
         currentProjectId,
+        currentVersionIndex,
         isDirty,
+        isReady,
         projectName,
         versions,
         designStyle,

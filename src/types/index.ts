@@ -32,6 +32,7 @@ export interface Message {
   plan?: string;
   blockId?: string;
   blocksSnapshot?: Block[];
+  timestamp?: number;
 }
 
 export interface Settings {

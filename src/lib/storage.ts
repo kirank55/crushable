@@ -8,6 +8,11 @@ const KEYS = {
     currentProjectId: 'crushable:currentProjectId',
 };
 
+function emitSettingsChange(): void {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new CustomEvent('crushable:settings-changed'));
+}
+
 // --- Settings ---
 
 export function getApiKey(): string {
@@ -18,6 +23,7 @@ export function getApiKey(): string {
 export function setApiKey(key: string): void {
     logger.storage('setApiKey', { keyPrefix: key ? key.slice(0, 10) + '...' : '(empty)' });
     localStorage.setItem(KEYS.apiKey, key);
+    emitSettingsChange();
 }
 
 export function getModel(): string {
@@ -30,6 +36,7 @@ export function getModel(): string {
 export function setModel(model: string): void {
     logger.storage('setModel', { model });
     localStorage.setItem(KEYS.model, model);
+    emitSettingsChange();
 }
 
 export function getSettings(): Settings {

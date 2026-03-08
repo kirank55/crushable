@@ -1835,9 +1835,9 @@ export default function ChatPanel({
             disabled={isLoading}
           />
           <div className="input-actions">
-            <button onClick={onOpenSettings} className="model-badge-btn" title="Models">
+            <button onClick={onOpenSettings} className="model-badge-btn" title="Model">
               <Cpu size={12} />
-              Models
+              Model
             </button>
             <div className="select-block-wrapper" ref={selectDropdownRef}>
               <button

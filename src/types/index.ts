@@ -58,10 +58,6 @@ export const FREE_MODEL = 'auto:free';
 
 const DEFAULT_MODELS: ModelInfo[] = [
   { id: 'auto:free', label: 'Free Model', free: true },
-  { id: 'stepfun/step-3.5-flash:free', label: 'StepFun 3.5 Flash', free: true },
-  { id: 'z-ai/glm-4.5-air:free', label: 'GLM 4.5 Air', free: true },
-  { id: 'nvidia/nemotron-3-nano-30b-a3b:free', label: 'NVIDIA Nemotron 30B', free: true },
-  { id: 'google/gemma-3-27b-it:free', label: 'Gemma 3 27B', free: true },
 ];
 
 export const PREMIUM_MODELS: ModelInfo[] = [

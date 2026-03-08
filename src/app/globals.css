@@ -1597,7 +1597,7 @@ body {
 
 .btn-primary {
   padding: 8px 16px;
-  background: var(--accent);
+  background: var(--bg-primary);
   color: white;
   border: none;
   border-radius: var(--radius);
@@ -1609,7 +1609,7 @@ body {
 }
 
 .btn-primary:hover {
-  background: var(--accent-hover);
+  background: var(--bg-primary-hover);
 }
 
 /* ========================================

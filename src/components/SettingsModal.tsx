@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Settings as SettingsIcon, X, Key, Cpu, CheckCircle, AlertCircle } from 'lucide-react';
 import { getApiKey, setApiKey, getModel, setModel } from '@/lib/storage';
-import { FREE_MODEL, getAvailableModels } from '@/types';
+import { FREE_MODEL } from '@/types';
 import { logger } from '@/lib/logger';
 
 interface SettingsModalProps {
@@ -16,8 +16,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const [selectedModel, setSelectedModel] = useState(FREE_MODEL);
     const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
     const [testMessage, setTestMessage] = useState('');
-    const [customModel, setCustomModel] = useState('');
-    const models = useMemo(() => getAvailableModels(!!key), [key]);
+
 
     useEffect(() => {
         if (isOpen) {
@@ -63,12 +62,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         }
     };
 
-    const handleModelChange = (model: string) => {
-        logger.action('Settings model change', { model });
-        setSelectedModel(model);
-        setCustomModel('');
-        setTestStatus('idle');
-    };
+
 
     if (!isOpen) return null;
 
@@ -78,7 +72,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <div className="modal-header">
                     <div className="modal-title">
                         <SettingsIcon size={20} />
-                        <h2>Settings</h2>
+                        <h2>Model Settings</h2>
                     </div>
                     <button onClick={onClose} className="modal-close">
                         <X size={20} />
@@ -107,32 +101,13 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             Model
                         </label>
                         <div className="model-grid">
-                            {models.map((model) => (
-                                <button
-                                    key={model.id}
-                                    onClick={() => handleModelChange(model.id)}
-                                    className={`model-option ${selectedModel === model.id ? 'active' : ''}`}
-                                >
-                                    <span className="model-name">{model.label}</span>
-                                    {model.free && <span className="model-badge free">FREE</span>}
-                                </button>
-                            ))}
-                        </div>
-                        <div className="custom-model-input">
-                            <label className="setting-hint">Or enter a custom OpenRouter model ID:</label>
-                            <input
-                                type="text"
-                                value={customModel}
-                                onChange={(e) => {
-                                    setCustomModel(e.target.value);
-                                    if (e.target.value.trim()) {
-                                        setSelectedModel(e.target.value.trim());
-                                    }
-                                    setTestStatus('idle');
-                                }}
-                                placeholder="e.g. anthropic/claude-sonnet-4"
-                                className="setting-input"
-                            />
+                            <button
+                                className="model-option active"
+                                title="Try available free models"
+                            >
+                                <span className="model-name">Free Models</span>
+                                <span className="model-badge free">FREE</span>
+                            </button>
                         </div>
                     </div>
 

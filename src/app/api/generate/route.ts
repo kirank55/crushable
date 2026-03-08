@@ -3,7 +3,6 @@ import { streamFromOpenRouter, parseSSEStream } from '@/lib/openrouter';
 import { getSystemPrompt, buildEditPrompt, buildNewPrompt, buildPlanPrompt, buildDetailedPlanPrompt } from '@/lib/prompt';
 import { logger } from '@/lib/logger';
 
-export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
     try {

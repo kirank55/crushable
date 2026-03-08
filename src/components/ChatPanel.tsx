@@ -447,6 +447,16 @@ export default function ChatPanel({
     input.style.overflowY = input.scrollHeight > maxHeight ? "auto" : "hidden";
   }, [input]);
 
+  useEffect(() => {
+    if (!selectedBlockId || isLoading) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [isLoading, selectedBlockId]);
+
   const toggleMessageExpanded = (messageId: string) => {
     setExpandedMessages((prev) => {
       const next = new Set(prev);
@@ -1852,6 +1862,11 @@ export default function ChatPanel({
       </div>
 
       <div className="chat-input-area">
+        {selectedBlock && (
+          <div className="selected-section-hint">
+            Editing <strong>{selectedBlock.label}</strong>. Click another section in the preview or press Esc to clear.
+          </div>
+        )}
         <div className="input-row">
           <textarea
             ref={inputRef}

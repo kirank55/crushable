@@ -14,7 +14,9 @@ interface PreviewPanelProps {
   blocks: Block[];
   mobilePreview: boolean;
   designStyle?: string;
+  selectedBlockId?: string | null;
   viewMode: 'preview' | 'code' | 'console';
+  onSelectBlock?: (blockId: string) => void;
   onCodeSave?: (sectionsHtml: string) => void;
 }
 
@@ -27,9 +29,18 @@ const STYLE_BODY_BG: Record<string, string> = {
   elegant: '#1e293b',
 };
 
-export default function PreviewPanel({ blocks, mobilePreview, designStyle, viewMode, onCodeSave }: PreviewPanelProps) {
+export default function PreviewPanel({
+  blocks,
+  mobilePreview,
+  designStyle,
+  selectedBlockId,
+  viewMode,
+  onSelectBlock,
+  onCodeSave,
+}: PreviewPanelProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [consoleLogs, setConsoleLogs] = useState<ConsoleLine[]>([]);
+  const [iframeLoadTick, setIframeLoadTick] = useState(0);
   const consoleEndRef = useRef<HTMLDivElement>(null);
   const codeRef = useRef<HTMLElement>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -37,21 +48,54 @@ export default function PreviewPanel({ blocks, mobilePreview, designStyle, viewM
   const editRef = useRef<HTMLTextAreaElement>(null);
   const editHighlightRef = useRef<HTMLPreElement>(null);
   const [codeCopied, setCodeCopied] = useState(false);
+  const lastAppliedSelectionRef = useRef<string | null>(null);
+
+  const selectedBlockHtml = useMemo(
+    () => blocks.find((block) => block.id === selectedBlockId)?.html ?? '',
+    [blocks, selectedBlockId]
+  );
+
+  const postPreviewCommand = useCallback(
+    (
+      command:
+        | { type: 'focus-block'; blockId: string; flash?: boolean; scroll?: boolean }
+        | { type: 'clear-selection' }
+    ) => {
+      iframeRef.current?.contentWindow?.postMessage(
+        { __crushable_preview_command: true, ...command },
+        '*'
+      );
+    },
+    []
+  );
 
   // Listen for console messages from the iframe
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
+      const iframeWindow = iframeRef.current?.contentWindow;
+      if (iframeWindow && event.source !== iframeWindow) return;
+
       if (event.data && event.data.__crushable_console) {
         const { type, args } = event.data;
         setConsoleLogs((prev) => [
           ...prev,
           { type, args, timestamp: Date.now() },
         ]);
+        return;
+      }
+
+      if (
+        event.data &&
+        event.data.__crushable_preview &&
+        event.data.type === 'select-block' &&
+        typeof event.data.blockId === 'string'
+      ) {
+        onSelectBlock?.(event.data.blockId);
       }
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, []);
+  }, [onSelectBlock]);
 
   // Auto-scroll console
   useEffect(() => {
@@ -86,6 +130,150 @@ export default function PreviewPanel({ blocks, mobilePreview, designStyle, viewM
       })();
     ${'<'}/script>`;
 
+    const previewInteractionScript = `
+      (function() {
+        var flashTimer = null;
+        var hoveredBlock = null;
+        var selectedBlock = null;
+
+        function createOverlay(kind) {
+          var overlay = document.createElement('div');
+          overlay.className = 'crushable-block-overlay ' + kind;
+
+          var badge = document.createElement('div');
+          badge.className = 'crushable-block-badge';
+          overlay.appendChild(badge);
+
+          document.body.appendChild(overlay);
+          return overlay;
+        }
+
+        function getBadge(overlay) {
+          return overlay.firstChild;
+        }
+
+        function getBlockId(block) {
+          return block ? block.getAttribute('data-block-id') || '' : '';
+        }
+
+        function findBlock(target) {
+          return target && target.closest ? target.closest('[data-block-id]') : null;
+        }
+
+        function hideOverlay(overlay) {
+          overlay.style.opacity = '0';
+          overlay.style.width = '0px';
+          overlay.style.height = '0px';
+        }
+
+        function positionOverlay(overlay, block) {
+          if (!block || !document.body.contains(block)) {
+            hideOverlay(overlay);
+            return;
+          }
+
+          var rect = block.getBoundingClientRect();
+          overlay.style.opacity = '1';
+          overlay.style.left = window.scrollX + rect.left + 'px';
+          overlay.style.top = window.scrollY + rect.top + 'px';
+          overlay.style.width = Math.max(rect.width, 0) + 'px';
+          overlay.style.height = Math.max(rect.height, 0) + 'px';
+          getBadge(overlay).textContent = getBlockId(block) || 'section';
+        }
+
+        var hoverOverlay = createOverlay('hover');
+        var selectedOverlay = createOverlay('selected');
+
+        function syncOverlays() {
+          positionOverlay(hoverOverlay, hoveredBlock && hoveredBlock !== selectedBlock ? hoveredBlock : null);
+          positionOverlay(selectedOverlay, selectedBlock);
+        }
+
+        function setHovered(block) {
+          hoveredBlock = block === selectedBlock ? null : block;
+          syncOverlays();
+        }
+
+        function setSelected(block, shouldFlash) {
+          selectedBlock = block;
+          if (hoveredBlock === block) hoveredBlock = null;
+          syncOverlays();
+
+          if (shouldFlash && block) {
+            selectedOverlay.classList.remove('flash');
+            void selectedOverlay.offsetWidth;
+            selectedOverlay.classList.add('flash');
+            window.clearTimeout(flashTimer);
+            flashTimer = window.setTimeout(function() {
+              selectedOverlay.classList.remove('flash');
+            }, 900);
+          }
+        }
+
+        document.addEventListener('mouseover', function(event) {
+          var block = findBlock(event.target);
+          if (block !== hoveredBlock) {
+            setHovered(block);
+          }
+        });
+
+        document.addEventListener('mouseout', function(event) {
+          if (!hoveredBlock) return;
+          var nextTarget = event.relatedTarget;
+          if (nextTarget && hoveredBlock.contains(nextTarget)) return;
+          setHovered(null);
+        });
+
+        document.addEventListener('click', function(event) {
+          var block = findBlock(event.target);
+          if (!block) return;
+
+          event.preventDefault();
+          event.stopPropagation();
+
+          setSelected(block, true);
+          window.parent.postMessage(
+            {
+              __crushable_preview: true,
+              type: 'select-block',
+              blockId: getBlockId(block),
+            },
+            '*'
+          );
+        }, true);
+
+        window.addEventListener('message', function(event) {
+          var data = event.data;
+          if (!data || !data.__crushable_preview_command) return;
+
+          if (data.type === 'clear-selection') {
+            selectedBlock = null;
+            syncOverlays();
+            return;
+          }
+
+          if (data.type !== 'focus-block' || !data.blockId) return;
+
+          var block = Array.prototype.slice
+            .call(document.querySelectorAll('[data-block-id]'))
+            .find(function(candidate) {
+              return candidate.getAttribute('data-block-id') === data.blockId;
+            });
+
+          if (!block) return;
+
+          setSelected(block, data.flash !== false);
+          if (data.scroll !== false) {
+            block.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+            window.setTimeout(syncOverlays, 250);
+          }
+        });
+
+        window.addEventListener('scroll', syncOverlays, { passive: true });
+        window.addEventListener('resize', syncOverlays);
+      })();
+    `;
+
     return `<!DOCTYPE html>
 <html lang="en" style="scroll-behavior: smooth;">
 <head>
@@ -98,12 +286,53 @@ export default function PreviewPanel({ blocks, mobilePreview, designStyle, viewM
   ${consoleInterceptor}
   <style>
     body { font-family: 'Inter', system-ui, sans-serif; margin: 0; cursor: default; background: ${STYLE_BODY_BG[designStyle || ''] || '#ffffff'}; }
+    [data-block-id] { cursor: pointer; }
     .empty-state {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       min-height: 100vh; color: #94a3b8; background: #f8fafc;
       font-size: 1.1rem; gap: 8px;
     }
     .empty-state svg { width: 48px; height: 48px; stroke: #cbd5e1; }
+    .crushable-block-overlay {
+      position: absolute;
+      pointer-events: none;
+      border-radius: 18px;
+      opacity: 0;
+      z-index: 2147483647;
+      transition: opacity 0.16s ease, transform 0.16s ease;
+    }
+    .crushable-block-overlay.hover {
+      border: 2px dashed rgba(37, 99, 235, 0.55);
+      background: rgba(37, 99, 235, 0.08);
+    }
+    .crushable-block-overlay.selected {
+      border: 2px solid rgba(37, 99, 235, 0.95);
+      background: rgba(37, 99, 235, 0.12);
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5), 0 18px 32px rgba(37, 99, 235, 0.18);
+    }
+    .crushable-block-badge {
+      position: absolute;
+      top: -14px;
+      left: 12px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.92);
+      color: #eff6ff;
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      text-transform: capitalize;
+      box-shadow: 0 8px 16px rgba(15, 23, 42, 0.28);
+    }
+    .crushable-block-overlay.flash {
+      animation: crushable-preview-pulse 0.9s ease;
+    }
+    @keyframes crushable-preview-pulse {
+      0% { transform: scale(0.995); }
+      35% { transform: scale(1.006); }
+      100% { transform: scale(1); }
+    }
   </style>
 </head>
 <body>
@@ -131,6 +360,7 @@ ${blocks.length === 0 ? `
       }
     }
   });
+${previewInteractionScript}
 ${'<'}/script>
 </body>
 </html>`;
@@ -140,6 +370,37 @@ ${'<'}/script>
     () => blocks.map((block) => `${block.id}:${block.html}`).join('|||'),
     [blocks]
   );
+
+  useEffect(() => {
+    lastAppliedSelectionRef.current = null;
+  }, [iframeLoadTick]);
+
+  useEffect(() => {
+    if (viewMode !== 'preview' || iframeLoadTick === 0) return;
+
+    const nextSelectionSignature = selectedBlockId
+      ? `${selectedBlockId}:${selectedBlockHtml}`
+      : 'none';
+
+    if (nextSelectionSignature === lastAppliedSelectionRef.current) return;
+
+    const timer = window.setTimeout(() => {
+      if (selectedBlockId) {
+        postPreviewCommand({
+          type: 'focus-block',
+          blockId: selectedBlockId,
+          flash: true,
+          scroll: true,
+        });
+      } else {
+        postPreviewCommand({ type: 'clear-selection' });
+      }
+
+      lastAppliedSelectionRef.current = nextSelectionSignature;
+    }, 60);
+
+    return () => window.clearTimeout(timer);
+  }, [iframeLoadTick, postPreviewCommand, selectedBlockHtml, selectedBlockId, viewMode]);
 
   // Full HTML document for code view
   const fullDocumentCode = useMemo(() => {
@@ -237,6 +498,7 @@ ${'<'}/script>
             title="Page Preview"
             sandbox="allow-scripts allow-same-origin"
             className="preview-iframe"
+            onLoad={() => setIframeLoadTick((prev) => prev + 1)}
           />
         </div>
       ) : viewMode === 'code' ? (

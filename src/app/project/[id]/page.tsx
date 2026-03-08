@@ -73,6 +73,11 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
     const [viewMode, setViewMode] = useState<'preview' | 'code' | 'console'>('preview');
     const [helpOpen, setHelpOpen] = useState(false);
 
+    const handlePreviewSelect = useCallback((blockId: string) => {
+        setChatVisible(true);
+        selectBlock(blockId);
+    }, [selectBlock]);
+
     const designStylePrompt = useMemo(() => {
         if (!designStyle) return undefined;
         return DESIGN_STYLES.find(s => s.id === designStyle)?.prompt;
@@ -233,7 +238,9 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
                         blocks={blocks}
                         mobilePreview={mobilePreview}
                         designStyle={designStyle}
+                        selectedBlockId={selectedBlockId}
                         viewMode={viewMode}
+                        onSelectBlock={handlePreviewSelect}
                         onCodeSave={(editedHtml) => {
                             // Parse the edited HTML back into individual section blocks
                             const parsed = parseImportedHtml(`<body>${editedHtml}</body>`);

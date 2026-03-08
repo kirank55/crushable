@@ -1,8 +1,8 @@
 'use client';
 
 
-import { useState, useMemo, useCallback, useEffect, use } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useMemo, useCallback, useEffect, use, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { usePageState } from '@/hooks/usePageState';
 import { DESIGN_STYLES } from '@/types';
 import { MessageSquare } from 'lucide-react';
@@ -16,10 +16,14 @@ import HelpModal from '@/components/HelpModal';
 import { createBlock } from '@/lib/blocks';
 import { parseImportedHtml } from '@/lib/import';
 import { logger } from '@/lib/logger';
+import { getTemplateById } from '@/lib/templates';
 
 export default function BuilderPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const templateId = searchParams.get('template');
+    const templateAppliedRef = useRef(false);
 
     const {
         blocks,
@@ -64,10 +68,15 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
 
     // Redirect /project/new to /project/[actual-id] once ID is assigned
     useEffect(() => {
-        if (id === 'new' && currentProjectId && currentProjectId !== 'new') {
+        if (
+            id === 'new' &&
+            currentProjectId &&
+            currentProjectId !== 'new' &&
+            (!templateId || templateAppliedRef.current || blocks.length > 0)
+        ) {
             router.replace(`/project/${currentProjectId}`);
         }
-    }, [id, currentProjectId, router]);
+    }, [blocks.length, currentProjectId, id, router, templateId]);
 
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [versionsOpen, setVersionsOpen] = useState(false);
@@ -170,6 +179,26 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
             handleRename(details.brandName);
         }
     }, [handleRename]);
+
+    useEffect(() => {
+        if (!isReady || id !== 'new' || !templateId || templateAppliedRef.current || blocks.length > 0) {
+            return;
+        }
+
+        const template = getTemplateById(templateId);
+        if (!template) {
+            templateAppliedRef.current = true;
+            return;
+        }
+
+        logger.action('Apply template', { templateId: template.id, templateName: template.name });
+        importBlocks(template.buildBlocks());
+        handleRename(template.name);
+        if (!designStyle) {
+            setDesignStyle(template.designStyle);
+        }
+        templateAppliedRef.current = true;
+    }, [blocks.length, designStyle, handleRename, id, importBlocks, isReady, setDesignStyle, templateId]);
 
     if (!isReady) {
         return (

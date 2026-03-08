@@ -5,8 +5,9 @@ import { useRouter } from 'next/navigation';
 import { Project } from '@/types';
 import { getProjects, deleteProject } from '@/lib/storage';
 import { formatRelativeDate } from '@/lib/date';
-import { Sparkles, Plus, Trash2, Clock, Settings } from 'lucide-react';
+import { Sparkles, Plus, Trash2, Clock, Settings, LayoutTemplate } from 'lucide-react';
 import SettingsModal from '@/components/SettingsModal';
+import { TEMPLATE_LIBRARY } from '@/lib/templates';
 
 export default function HomePage() {
   const router = useRouter();
@@ -40,6 +41,46 @@ export default function HomePage() {
             <Plus size={20} />
             <span>New Project</span>
           </button>
+        </div>
+
+        <div className="template-showcase">
+          <div className="template-showcase-header">
+            <div>
+              <p className="template-showcase-eyebrow">Start from something close</p>
+              <h2>Pick a built-in template</h2>
+            </div>
+            <div className="template-showcase-note">
+              <LayoutTemplate size={14} />
+              Static HTML starter pages you can edit with chat, preview, and code.
+            </div>
+          </div>
+
+          <div className="template-grid">
+            {TEMPLATE_LIBRARY.map((template) => (
+              <button
+                key={template.id}
+                onClick={() => router.push(`/project/new?template=${template.id}`)}
+                className="template-card"
+              >
+                <div
+                  className="template-card-preview"
+                  style={{ background: template.preview.accent }}
+                >
+                  <span>{template.preview.eyebrow}</span>
+                  <strong>{template.name}</strong>
+                  <p>{template.preview.title}</p>
+                </div>
+                <div className="template-card-body">
+                  <div className="template-card-topline">
+                    <span className="template-card-category">{template.category}</span>
+                    <span className="template-card-style">{template.designStyle}</span>
+                  </div>
+                  <h3>{template.name}</h3>
+                  <p>{template.description}</p>
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
 
         {projects.length > 0 && (

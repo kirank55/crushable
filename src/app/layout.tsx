@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
+export const runtime = 'edge';
+
 export const metadata: Metadata = {
   title: "Crushable — AI Landing Page Builder",
   description: "Build stunning landing pages with AI. Export pure HTML + Tailwind CSS. Zero lock-in.",

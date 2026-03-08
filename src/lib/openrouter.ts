@@ -1,4 +1,4 @@
-import { FREE_AUTO_MODEL, getAvailableModels } from '@/types';
+import { FREE_AUTO_MODEL } from '@/types';
 import { logger } from '@/lib/logger';
 
 interface OpenRouterRequest {
@@ -7,6 +7,16 @@ interface OpenRouterRequest {
     apiKey?: string;
     model?: string;
 }
+
+/**
+ * Free models to try in order when auto:free is selected.
+ */
+const FREE_MODELS_FALLBACK = [
+    'stepfun/step-3.5-flash:free',
+    'z-ai/glm-4.5-air:free',
+    'nvidia/nemotron-3-nano-30b-a3b:free',
+    'google/gemma-3-27b-it:free',
+];
 
 /**
  * Make a single OpenRouter API call for a specific model.
@@ -58,15 +68,6 @@ async function callOpenRouter(
     return response.body;
 }
 
-/**
- * Get the list of free model IDs to try (excluding the auto:free entry).
- */
-function getFreeModelIds(): string[] {
-    return getAvailableModels()
-        .filter(m => m.free && m.id !== FREE_AUTO_MODEL)
-        .map(m => m.id);
-}
-
 export async function streamFromOpenRouter({
     prompt,
     systemPrompt,
@@ -96,7 +97,7 @@ export async function streamFromOpenRouter({
     }
 
     // Auto mode: try free models in order, fall back on error
-    const freeModels = getFreeModelIds();
+    const freeModels = FREE_MODELS_FALLBACK;
     logger.info('Free Auto mode — will try models in order', { models: freeModels });
 
     const errors: string[] = [];

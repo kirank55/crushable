@@ -1,7 +1,10 @@
 import { Block } from '@/types';
 
 export function generateFullHTML(blocks: Block[], projectName?: string): string {
-  const sectionsHtml = blocks.map((b) => b.html).join('\n\n');
+  const sectionsHtml = blocks
+    .filter((block) => block.visible !== false)
+    .map((block) => block.html)
+    .join('\n\n');
   const title = projectName?.trim() || 'Landing Page';
 
   return `<!DOCTYPE html>

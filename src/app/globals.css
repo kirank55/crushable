@@ -1069,6 +1069,202 @@ body {
   flex-direction: column;
 }
 
+.section-panel {
+  width: 282px;
+  min-width: 282px;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, rgba(20, 20, 20, 0.98), rgba(13, 13, 13, 0.98));
+  border-right: 1px solid var(--border);
+}
+
+.section-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.section-panel-header h2 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.section-panel-header p {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.section-panel-empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  padding: 24px 18px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.section-panel-empty p {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.section-panel-empty span {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.section-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.section-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 10px 10px 8px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  cursor: pointer;
+  text-align: left;
+  transition: all var(--transition);
+}
+
+.section-item:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-light);
+  color: var(--text-primary);
+}
+
+.section-item.selected {
+  border-color: rgba(96, 165, 250, 0.7);
+  box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.35);
+  background: rgba(37, 99, 235, 0.12);
+}
+
+.section-item.hidden {
+  opacity: 0.82;
+}
+
+.section-item.drop-target {
+  border-color: rgba(34, 197, 94, 0.75);
+  transform: translateY(-1px);
+}
+
+.section-item-grip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.section-item-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.section-item-order {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+}
+
+.section-item-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.section-item-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.section-item-meta {
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.section-item-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.section-item-visibility {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #86efac;
+}
+
+.section-item-visibility.is-hidden {
+  color: #fda4af;
+}
+
+.section-item-action-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.section-item-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid transparent;
+  transition: all var(--transition);
+}
+
+.section-item-action:hover,
+.section-item-action:focus-visible {
+  color: var(--text-primary);
+  border-color: var(--border-light);
+  outline: none;
+}
+
+.section-item-action.danger:hover,
+.section-item-action.danger:focus-visible {
+  color: #fda4af;
+  border-color: rgba(244, 63, 94, 0.35);
+}
+
 .preview-tabs {
   display: flex;
   align-items: center;
@@ -2440,6 +2636,14 @@ body {
     max-height: 52vh;
   }
 
+  .section-panel {
+    width: 100%;
+    min-width: 100%;
+    max-height: 36vh;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
   .builder-main {
     flex-direction: column;
   }
@@ -2471,6 +2675,11 @@ body {
   .chat-panel {
     width: 320px;
     min-width: 320px;
+  }
+
+  .section-panel {
+    width: 248px;
+    min-width: 248px;
   }
 
   .toolbar-right {

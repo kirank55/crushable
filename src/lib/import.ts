@@ -1,4 +1,5 @@
 import { Block } from '@/types';
+import { buildBlockLabel } from '@/lib/blocks';
 import { logger } from '@/lib/logger';
 
 /**
@@ -15,12 +16,13 @@ export function parseImportedHtml(html: string): Block[] {
 
     sections.forEach((section) => {
         const blockId = section.getAttribute('data-block-id') || '';
-        const label = blockId.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+        const label = buildBlockLabel(blockId);
 
         blocks.push({
             id: blockId,
             label,
             html: section.outerHTML,
+            visible: true,
         });
     });
 

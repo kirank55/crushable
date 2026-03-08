@@ -49,6 +49,10 @@ export default function PreviewPanel({
   const editHighlightRef = useRef<HTMLPreElement>(null);
   const [codeCopied, setCodeCopied] = useState(false);
   const lastAppliedSelectionRef = useRef<string | null>(null);
+  const visibleBlocks = useMemo(
+    () => blocks.filter((block) => block.visible !== false),
+    [blocks]
+  );
 
   const selectedBlockHtml = useMemo(
     () => blocks.find((block) => block.id === selectedBlockId)?.html ?? '',
@@ -106,7 +110,7 @@ export default function PreviewPanel({
   const clearConsole = useCallback(() => setConsoleLogs([]), []);
 
   const htmlContent = useMemo(() => {
-    const sectionsHtml = blocks.map((b) => b.html).join('\n\n');
+    const sectionsHtml = visibleBlocks.map((block) => block.html).join('\n\n');
 
     // Console interceptor script
     const consoleInterceptor = `
@@ -344,6 +348,14 @@ ${blocks.length === 0 ? `
   <span>Start chatting to build your page</span>
   <span style="font-size:0.85rem;color:#64748b;">Sections will appear here as you create them</span>
 </div>
+` : visibleBlocks.length === 0 ? `
+<div class="empty-state">
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c1.955 0 3.832-.533 5.449-1.473M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.774 3.162 10.066 7.5a10.522 10.522 0 0 1-4.293 5.568M6.228 6.228 3 3m3.228 3.228 11.544 11.544" />
+  </svg>
+  <span>All sections are hidden in preview</span>
+  <span style="font-size:0.85rem;color:#64748b;">Use the Sections panel to show them again</span>
+</div>
 ` : sectionsHtml}
 <script>
   lucide.createIcons();
@@ -364,11 +376,11 @@ ${previewInteractionScript}
 ${'<'}/script>
 </body>
 </html>`;
-  }, [blocks, designStyle]);
+  }, [blocks.length, designStyle, visibleBlocks]);
 
   const previewDocKey = useMemo(
-    () => blocks.map((block) => `${block.id}:${block.html}`).join('|||'),
-    [blocks]
+    () => visibleBlocks.map((block) => `${block.id}:${block.visible !== false}:${block.html}`).join('|||'),
+    [visibleBlocks]
   );
 
   useEffect(() => {
@@ -405,8 +417,9 @@ ${'<'}/script>
   // Full HTML document for code view
   const fullDocumentCode = useMemo(() => {
     if (blocks.length === 0) return '<!-- No sections yet. Start chatting to build your page. -->';
+    if (visibleBlocks.length === 0) return '<!-- All sections are hidden in preview. -->';
 
-    const sectionsHtml = blocks.map((b) => b.html).join('\n\n');
+    const sectionsHtml = visibleBlocks.map((block) => block.html).join('\n\n');
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -428,7 +441,7 @@ ${sectionsHtml}
 ${'<'}/script>
 </body>
 </html>`;
-  }, [blocks]);
+  }, [blocks.length, visibleBlocks]);
 
   // Load Prism.js
   const loadPrism = useCallback(async () => {

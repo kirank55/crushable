@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Block, Project, Version, Message } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
+import { duplicateExistingBlock as duplicateBlockData } from '@/lib/blocks';
 import {
     saveProject,
     loadProject,
@@ -235,6 +236,33 @@ export function usePageState(projectId?: string) {
         setIsDirty(true);
     }, [pushUndo]);
 
+    const duplicateBlock = useCallback((id: string) => {
+        let duplicatedId: string | null = null;
+
+        logger.action('duplicateBlock', { blockId: id });
+        isViewingOldVersion.current = false;
+        setBlocks((prev) => {
+            const index = prev.findIndex((block) => block.id === id);
+            if (index === -1) return prev;
+
+            pushUndo([...prev]);
+
+            const nextBlock = duplicateBlockData(prev[index], prev.map((block) => block.id));
+            duplicatedId = nextBlock.id;
+
+            const next = [...prev];
+            next.splice(index + 1, 0, nextBlock);
+            return next;
+        });
+
+        if (duplicatedId) {
+            setSelectedBlockId(duplicatedId);
+        }
+
+        setCurrentVersionIndex(null);
+        setIsDirty(true);
+    }, [pushUndo]);
+
     const undo = useCallback((): string | null => {
         let undoneLabel: string | null = null;
         isViewingOldVersion.current = false; // Real content change
@@ -265,10 +293,14 @@ export function usePageState(projectId?: string) {
     const removeBlock = useCallback((id: string) => {
         logger.action('removeBlock', { blockId: id });
         isViewingOldVersion.current = false; // Real content change
-        setBlocks((prev) => prev.filter((b) => b.id !== id));
+        setBlocks((prev) => {
+            pushUndo([...prev]);
+            return prev.filter((b) => b.id !== id);
+        });
         setSelectedBlockId((prev) => (prev === id ? null : prev));
+        setCurrentVersionIndex(null);
         setIsDirty(true);
-    }, []);
+    }, [pushUndo]);
 
     const selectBlock = useCallback((id: string | null) => {
         logger.action('selectBlock', { blockId: id });
@@ -283,9 +315,32 @@ export function usePageState(projectId?: string) {
     const reorderBlocks = useCallback((newBlocks: Block[]) => {
         logger.action('reorderBlocks');
         isViewingOldVersion.current = false;
+        pushUndo([...blocksRef.current]);
         setBlocks(newBlocks);
+        setCurrentVersionIndex(null);
         setIsDirty(true);
-    }, []);
+    }, [pushUndo]);
+
+    const toggleBlockVisibility = useCallback((id: string) => {
+        logger.action('toggleBlockVisibility', { blockId: id });
+        isViewingOldVersion.current = false;
+        setBlocks((prev) => {
+            const index = prev.findIndex((block) => block.id === id);
+            if (index === -1) return prev;
+
+            pushUndo([...prev]);
+
+            return prev.map((block) => {
+                if (block.id !== id) return block;
+                return {
+                    ...block,
+                    visible: block.visible === false,
+                };
+            });
+        });
+        setCurrentVersionIndex(null);
+        setIsDirty(true);
+    }, [pushUndo]);
 
     const setDesignStyle = useCallback((style: string) => {
         logger.action('setDesignStyle', { style });
@@ -414,16 +469,22 @@ export function usePageState(projectId?: string) {
 
     const clearAll = useCallback(() => {
         logger.action('clearAll');
+        pushUndo([...blocksRef.current]);
         setBlocks([]);
         setSelectedBlockId(null);
+        setCurrentVersionIndex(null);
         setIsDirty(true);
-    }, []);
+    }, [pushUndo]);
 
     const importBlocks = useCallback((newBlocks: Block[]) => {
         logger.action('importBlocks', { count: newBlocks.length });
-        setBlocks((prev) => [...prev, ...newBlocks]);
+        setBlocks((prev) => {
+            pushUndo([...prev]);
+            return [...prev, ...newBlocks.map((block) => ({ ...block, visible: block.visible !== false }))];
+        });
+        setCurrentVersionIndex(null);
         setIsDirty(true);
-    }, []);
+    }, [pushUndo]);
 
     return {
         blocks,
@@ -439,10 +500,12 @@ export function usePageState(projectId?: string) {
         addBlock,
         addBlockSmart,
         updateBlock,
+        duplicateBlock,
         removeBlock,
         selectBlock,
         clearSelection,
         reorderBlocks,
+        toggleBlockVisibility,
         setDesignStyle,
         createVersionSnapshot,
         loadVersion,

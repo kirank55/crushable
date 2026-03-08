@@ -8,6 +8,7 @@ import { DESIGN_STYLES } from '@/types';
 import { MessageSquare } from 'lucide-react';
 import PreviewPanel from '@/components/PreviewPanel';
 import ChatPanel, { ProjectDetails } from '@/components/ChatPanel';
+import SectionPanel from '@/components/SectionPanel';
 import Toolbar from '@/components/Toolbar';
 import SettingsModal from '@/components/SettingsModal';
 import VersionsPanel from '@/components/VersionsPanel';
@@ -33,9 +34,12 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
         canUndo,
         addBlockSmart,
         updateBlock,
+        duplicateBlock,
+        removeBlock,
         selectBlock,
         clearSelection,
         reorderBlocks,
+        toggleBlockVisibility,
         handleSave,
         handleNew,
         handleRename,
@@ -72,6 +76,7 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
     const [chatResetKey, setChatResetKey] = useState(0);
     const [viewMode, setViewMode] = useState<'preview' | 'code' | 'console'>('preview');
     const [helpOpen, setHelpOpen] = useState(false);
+    const [sectionsVisible, setSectionsVisible] = useState(true);
 
     const handlePreviewSelect = useCallback((blockId: string) => {
         setChatVisible(true);
@@ -194,7 +199,9 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
                 onOpenVersions={() => setVersionsOpen(true)}
                 onHideChat={() => setChatVisible(false)}
                 onOpenHelp={() => setHelpOpen(true)}
+                onToggleSectionsPanel={() => setSectionsVisible((prev) => !prev)}
                 chatVisible={chatVisible}
+                sectionsVisible={sectionsVisible}
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
             />
@@ -234,6 +241,19 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
                 )}
 
                 {!isChatFullScreen && (
+                    <>
+                        {sectionsVisible && (
+                            <SectionPanel
+                                blocks={blocks}
+                                selectedBlockId={selectedBlockId}
+                                onSelectBlock={handlePreviewSelect}
+                                onReorderBlocks={reorderBlocks}
+                                onDuplicateBlock={duplicateBlock}
+                                onRemoveBlock={removeBlock}
+                                onToggleVisibility={toggleBlockVisibility}
+                            />
+                        )}
+
                     <PreviewPanel
                         blocks={blocks}
                         mobilePreview={mobilePreview}
@@ -255,6 +275,7 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
                             createVersionSnapshot('Manual code edit');
                         }}
                     />
+                    </>
                 )}
             </div>
 

@@ -2,6 +2,7 @@ export interface Block {
   id: string;
   label: string;
   html: string;
+  visible?: boolean;
 }
 
 export interface Version {

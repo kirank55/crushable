@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Download, Save, Settings, ArrowLeft, Plus, Trash2, Check, Upload, Smartphone, History, PanelLeftClose, Eye, Code, Terminal, HelpCircle } from 'lucide-react';
+import { Download, Save, Settings, ArrowLeft, Plus, Trash2, Check, Upload, Smartphone, History, PanelLeftClose, Eye, Code, Terminal, HelpCircle, Layers } from 'lucide-react';
 import { downloadHTML } from '@/lib/export';
 import { getApiKey, getModel } from '@/lib/storage';
 import { Block, getAvailableModels } from '@/types';
@@ -23,7 +23,9 @@ interface ToolbarProps {
     onOpenVersions?: () => void;
     onHideChat?: () => void;
     onOpenHelp?: () => void;
+    onToggleSectionsPanel?: () => void;
     chatVisible?: boolean;
+    sectionsVisible?: boolean;
     viewMode?: 'preview' | 'code' | 'console';
     onViewModeChange?: (mode: 'preview' | 'code' | 'console') => void;
 }
@@ -43,7 +45,9 @@ export default function Toolbar({
     onOpenVersions,
     onHideChat,
     onOpenHelp,
+    onToggleSectionsPanel,
     chatVisible,
+    sectionsVisible,
     viewMode,
     onViewModeChange,
 }: ToolbarProps) {
@@ -159,6 +163,11 @@ export default function Toolbar({
                     {onHideChat && chatVisible && (
                         <button onClick={onHideChat} className="header-action-btn" title="Hide Chat">
                             <PanelLeftClose size={16} />
+                        </button>
+                    )}
+                    {onToggleSectionsPanel && (
+                        <button onClick={onToggleSectionsPanel} className={`header-action-btn ${sectionsVisible ? 'active' : ''}`} title="Toggle Sections Panel">
+                            <Layers size={16} />
                         </button>
                     )}
                 </div>

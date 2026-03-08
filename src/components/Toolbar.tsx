@@ -118,11 +118,7 @@ export default function Toolbar({
 
 
                 <div className="toolbar-actions">
-                    {onToggleMobilePreview && (
-                        <button onClick={onToggleMobilePreview} className="header-action-btn" title="Mobile Preview">
-                            <Smartphone size={16} />
-                        </button>
-                    )}
+
                     {onOpenVersions && (
                         <button onClick={onOpenVersions} className="header-action-btn" title="Versions">
                             <History size={16} />
@@ -157,25 +153,15 @@ export default function Toolbar({
                 )}
             </div>
 
-            {/* <div className="toolbar-center">
+
+            <div className="toolbar-right">
+
                 {onToggleMobilePreview && (
                     <button onClick={onToggleMobilePreview} className="header-action-btn" title="Mobile Preview">
                         <Smartphone size={16} />
                     </button>
                 )}
-                {onOpenVersions && (
-                    <button onClick={onOpenVersions} className="header-action-btn" title="Versions">
-                        <History size={16} />
-                    </button>
-                )}
-                {onHideChat && chatVisible && (
-                    <button onClick={onHideChat} className="header-action-btn" title="Hide Chat">
-                        <PanelLeftClose size={16} />
-                    </button>
-                )}
-            </div> */}
 
-            <div className="toolbar-right">
                 {viewMode && onViewModeChange && (
                     <div className="preview-tabs">
                         <button

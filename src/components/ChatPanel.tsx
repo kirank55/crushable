@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Block, Message, DESIGN_STYLES } from "@/types";
 import { createBlock } from "@/lib/blocks";
 import { getApiKey, getModel } from "@/lib/storage";
@@ -361,6 +361,72 @@ export default function ChatPanel({
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const selectedBlock = blocks.find((b) => b.id === selectedBlockId);
+  const selectedStyle = useMemo(
+    () => DESIGN_STYLES.find((style) => style.id === designStyle),
+    [designStyle],
+  );
+  const promptSuggestions = useMemo(() => {
+    if (selectedBlock) {
+      return [
+        {
+          icon: <Pencil size={14} />,
+          label: "Refresh the selected section",
+          prompt: `Refine "${selectedBlock.label}" with stronger hierarchy, better spacing, and a clearer CTA.`,
+        },
+        {
+          icon: <Sparkles size={14} />,
+          label: "Make it feel more premium",
+          prompt: `Make "${selectedBlock.label}" feel more premium with richer visuals, elevated typography, and refined accents.`,
+        },
+        {
+          icon: <Link2 size={14} />,
+          label: "Connect it to the rest of the page",
+          prompt: `Update "${selectedBlock.label}" so it feels more connected to the rest of the page design and messaging.`,
+        },
+      ];
+    }
+
+    if (blocks.length === 0) {
+      return [
+        {
+          icon: <Layout size={14} />,
+          label: "Hero section",
+          prompt:
+            "Create a modern hero section with a gradient background, headline, subtext, and CTA button",
+        },
+        {
+          icon: <Grid3x3 size={14} />,
+          label: "Features grid",
+          prompt:
+            "Create a features grid with 3 cards, each with an icon, title, and description",
+        },
+        {
+          icon: <DollarSign size={14} />,
+          label: "Pricing table",
+          prompt:
+            "Create a pricing section with 3 tiers: Basic, Pro, and Enterprise",
+        },
+      ];
+    }
+
+    return [
+      {
+        icon: <Plus size={14} />,
+        label: "Add social proof",
+        prompt: "Add a social proof section with customer logos, metrics, and a short testimonial.",
+      },
+      {
+        icon: <ClipboardList size={14} />,
+        label: "Plan the whole page",
+        prompt: "Create a full landing page with navigation, hero, features, proof, pricing, FAQ, and CTA.",
+      },
+      {
+        icon: <RefreshCw size={14} />,
+        label: "Polish the overall design",
+        prompt: "Improve the page design with stronger hierarchy, more breathing room, and cleaner section transitions.",
+      },
+    ];
+  }, [blocks.length, selectedBlock]);
 
   useEffect(() => {
     setMessages(initialMessages || []);
@@ -1410,9 +1476,14 @@ export default function ChatPanel({
       <div className={`chat-panel ${isFullScreen ? "full-screen" : ""}`}>
         <div className="chat-messages">
           <div className="chat-empty">
+            <div className="setup-progress" aria-label="Builder setup progress">
+              <span className="setup-progress-step active">1. Style</span>
+              <span className="setup-progress-step">2. Details</span>
+              <span className="setup-progress-step">3. Build</span>
+            </div>
             <Sparkles size={32} strokeWidth={1.5} />
             <h3>Choose a Design Style</h3>
-            <p>Pick a visual direction for your project.</p>
+            <p>Pick a visual direction for your project. You can refine sections later, but this gives the builder a clear creative north star.</p>
             <div className="design-style-grid">
               {DESIGN_STYLES.map((style) => (
                 <button
@@ -1420,6 +1491,11 @@ export default function ChatPanel({
                   onClick={() => handleDesignStyleSelect(style.id)}
                   className="design-style-option"
                 >
+                  <span className={`design-style-preview ${style.id}`} aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
                   <span className="design-style-emoji">{style.emoji}</span>
                   <span className="design-style-label">{style.label}</span>
                   <span className="design-style-desc">{style.description}</span>
@@ -1439,7 +1515,6 @@ export default function ChatPanel({
   }
 
   if (setupPhase === "details" && blocks.length === 0) {
-    const selectedStyle = DESIGN_STYLES.find((s) => s.id === designStyle);
     const productDescriptionLength = (
       setupDetails.productDescription || ""
     ).trim().length;
@@ -1448,13 +1523,18 @@ export default function ChatPanel({
       <div className={`chat-panel ${isFullScreen ? "full-screen" : ""}`}>
         <div className="chat-messages">
           <div className="chat-empty setup-form">
+            <div className="setup-progress" aria-label="Builder setup progress">
+              <span className="setup-progress-step complete">1. Style</span>
+              <span className="setup-progress-step active">2. Details</span>
+              <span className="setup-progress-step">3. Build</span>
+            </div>
             <div className="design-style-badge">
               {selectedStyle?.emoji} {selectedStyle?.label} style
             </div>
             <h3>
               Project Details
             </h3>
-            <p>Provide some context to help the AI generate better content.</p>
+            <p>Provide the essentials so Crushable can plan stronger sections and keep the first draft aligned with your product.</p>
             <div className="setup-fields">
               <div className="setup-field">
                 <label>Brand / Company Name  <span className="optional-tag">optional</span></label>
@@ -1533,6 +1613,9 @@ export default function ChatPanel({
                 </span>
               </div>
             </div>
+            <div className="setup-completion-meter" aria-hidden="true">
+              <span style={{ width: `${Math.min(100, (productDescriptionLength / 50) * 100)}%` }} />
+            </div>
             <div className="setup-actions">
               <button
                 onClick={() => {
@@ -1570,13 +1653,18 @@ export default function ChatPanel({
       <div className="chat-messages">
         {messages.length === 0 && (
           <div className="chat-empty">
+            <div className="setup-progress compact" aria-label="Builder setup progress">
+              <span className="setup-progress-step complete">1. Style</span>
+              <span className="setup-progress-step complete">2. Details</span>
+              <span className="setup-progress-step active">3. Build</span>
+            </div>
             <Sparkles size={32} strokeWidth={1.5} />
             <h3>Welcome to Crushable</h3>
-            <p>Describe a section to create, or select one to edit it.</p>
+            <p>Start with a full-page brief or drop into section mode. The builder will stream sections into the live preview as you go.</p>
             {designStyle && (
               <div className="design-style-badge">
-                {DESIGN_STYLES.find((s) => s.id === designStyle)?.emoji}{" "}
-                {DESIGN_STYLES.find((s) => s.id === designStyle)?.label} style
+                {selectedStyle?.emoji}{" "}
+                {selectedStyle?.label} style
               </div>
             )}
 
@@ -1591,33 +1679,14 @@ export default function ChatPanel({
             </button>
 
             <div className="chat-suggestions">
-              <button
-                onClick={() =>
-                  setInput(
-                    "Create a modern hero section with a gradient background, headline, subtext, and CTA button",
-                  )
-                }
-              >
-                <Layout size={14} /> Hero Section
-              </button>
-              <button
-                onClick={() =>
-                  setInput(
-                    "Create a features grid with 3 cards, each with an icon, title, and description",
-                  )
-                }
-              >
-                <Grid3x3 size={14} /> Features Grid
-              </button>
-              <button
-                onClick={() =>
-                  setInput(
-                    "Create a pricing section with 3 tiers: Basic, Pro, and Enterprise",
-                  )
-                }
-              >
-                <DollarSign size={14} /> Pricing Table
-              </button>
+              {promptSuggestions.map((suggestion) => (
+                <button
+                  key={suggestion.label}
+                  onClick={() => setInput(suggestion.prompt)}
+                >
+                  {suggestion.icon} {suggestion.label}
+                </button>
+              ))}
             </div>
           </div>
         )}
@@ -1864,7 +1933,8 @@ export default function ChatPanel({
       <div className="chat-input-area">
         {selectedBlock && (
           <div className="selected-section-hint">
-            Editing <strong>{selectedBlock.label}</strong>. Click another section in the preview or press Esc to clear.
+            <Pencil size={14} />
+            Editing <strong>{selectedBlock.label}</strong>. Your next prompt will only change this section until you clear the target.
           </div>
         )}
         <div className="input-row">
@@ -1938,6 +2008,20 @@ export default function ChatPanel({
               {isLoading ? <Square size={16} /> : <Send size={18} />}
             </button>
           </div>
+        </div>
+        <div className="prompt-chip-row">
+          {promptSuggestions.map((suggestion) => (
+            <button
+              key={`input-${suggestion.label}`}
+              type="button"
+              className="prompt-chip"
+              onClick={() => setInput(suggestion.prompt)}
+              disabled={isLoading}
+            >
+              {suggestion.icon}
+              <span>{suggestion.label}</span>
+            </button>
+          ))}
         </div>
         <div className="input-shortcuts-hint">
           Enter sends, Shift+Enter adds a new line, Ctrl/Cmd+S saves, Ctrl/Cmd+Z undoes, Esc clears selection.

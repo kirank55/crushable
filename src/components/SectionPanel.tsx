@@ -23,6 +23,18 @@ function moveBlock(blocks: Block[], fromIndex: number, toIndex: number): Block[]
     return next;
 }
 
+function buildStructurePreview(html: string): number[] {
+    const headingCount = (html.match(/<h[1-6]\b/gi) || []).length;
+    const paragraphCount = (html.match(/<p\b/gi) || []).length;
+    const actionCount = (html.match(/<(a|button)\b/gi) || []).length;
+
+    return [
+        Math.min(88, 44 + headingCount * 18),
+        Math.min(78, 34 + paragraphCount * 10),
+        Math.min(68, 28 + actionCount * 14),
+    ];
+}
+
 export default function SectionPanel({
     blocks,
     selectedBlockId,
@@ -82,6 +94,7 @@ export default function SectionPanel({
                         const isSelected = block.id === selectedBlockId;
                         const isHidden = block.visible === false;
                         const isDropTarget = block.id === dropTargetBlockId && draggedBlockId !== block.id;
+                        const structurePreview = buildStructurePreview(block.html);
 
                         return (
                             <button
@@ -115,6 +128,15 @@ export default function SectionPanel({
 
                                 <span className="section-item-content">
                                     <span className="section-item-order">{String(index + 1).padStart(2, '0')}</span>
+                                    <span className="section-item-thumbnail" aria-hidden="true">
+                                        {structurePreview.map((width, previewIndex) => (
+                                            <span
+                                                key={`${block.id}-${previewIndex}`}
+                                                className="section-item-thumbnail-line"
+                                                style={{ width: `${width}%` }}
+                                            />
+                                        ))}
+                                    </span>
                                     <span className="section-item-text">
                                         <span className="section-item-title">{block.label}</span>
                                         <span className="section-item-meta">{block.id}{isHidden ? ' · hidden in preview' : ''}</span>

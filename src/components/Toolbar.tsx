@@ -25,6 +25,13 @@ import { Block, getAvailableModels } from "@/types";
 import { readFileAsText, parseImportedHtml } from "@/lib/import";
 import { logger } from "@/lib/logger";
 
+function formatSavedTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 interface ToolbarProps {
   blocks: Block[];
   projectName: string;
@@ -77,6 +84,7 @@ export default function Toolbar({
     return info?.label || model;
   });
   const [showSaved, setShowSaved] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const syncModelLabel = useCallback(() => {
@@ -107,6 +115,7 @@ export default function Toolbar({
   const handleSave = () => {
     logger.action("Toolbar save");
     onSave();
+    setLastSavedAt(Date.now());
     setShowSaved(true);
     setTimeout(() => setShowSaved(false), 2000);
   };
@@ -169,6 +178,20 @@ export default function Toolbar({
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  const saveStateLabel = isDirty
+    ? "Unsaved changes"
+    : showSaved
+      ? "Saved just now"
+      : lastSavedAt
+        ? `Saved at ${formatSavedTime(lastSavedAt)}`
+        : "All changes saved";
+
+  const saveStateMeta = isDirty
+    ? "Save to keep this version in local history"
+    : lastSavedAt
+      ? "Local project snapshot updated"
+      : "Ready for your next change";
+
   return (
     <div className="toolbar">
       <div className="toolbar-left">
@@ -182,31 +205,35 @@ export default function Toolbar({
         </button>
 
         <div className="toolbar-divider" />
-        {isEditing ? (
-          <input
-            value={editName}
-            onChange={(e) => setEditName(e.target.value)}
-            onBlur={handleRename}
-            onKeyDown={(e) => e.key === "Enter" && handleRename()}
-            className="project-name-input"
-            autoFocus
-          />
-        ) : (
-          <button
-            onClick={() => {
-              setEditName(projectName);
-              setIsEditing(true);
-            }}
-            className="project-name-btn"
-          >
-            {projectName}
-            {isDirty && (
-              <span className="unsaved-dot" title="Unsaved changes" />
-            )}
-          </button>
-        )}
+        <div className="project-identity">
+          <span className="project-eyebrow">Current project</span>
+          {isEditing ? (
+            <input
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onBlur={handleRename}
+              onKeyDown={(e) => e.key === "Enter" && handleRename()}
+              className="project-name-input"
+              autoFocus
+            />
+          ) : (
+            <button
+              onClick={() => {
+                setEditName(projectName);
+                setIsEditing(true);
+              }}
+              className="project-name-btn"
+            >
+              {projectName}
+            </button>
+          )}
+          <div className={`save-state ${isDirty ? "dirty" : "clean"}`}>
+            <span className="save-state-label">{saveStateLabel}</span>
+            <span className="save-state-meta">{saveStateMeta}</span>
+          </div>
+        </div>
 
-        <div className="toolbar-actions">
+        <div className="toolbar-actions toolbar-actions-inline">
           {onOpenVersions && (
             <button
               onClick={onOpenVersions}
@@ -237,19 +264,7 @@ export default function Toolbar({
         </div>
       </div>
 
-      <div className="toolbar-center"></div>
-
-      <div className="toolbar-right">
-        {onToggleMobilePreview && (
-          <button
-            onClick={onToggleMobilePreview}
-            className="header-action-btn"
-            title="Mobile Preview"
-          >
-            <Smartphone size={16} />
-          </button>
-        )}
-
+      <div className="toolbar-center">
         {viewMode && onViewModeChange && (
           <div className="preview-tabs">
             <button
@@ -275,84 +290,96 @@ export default function Toolbar({
             </button>
           </div>
         )}
+      </div>
 
-        <div className="toolbar-divider" />
+      <div className="toolbar-right">
+        <div className="toolbar-utility-group">
+          {onToggleMobilePreview && (
+            <button
+              onClick={onToggleMobilePreview}
+              className="header-action-btn"
+              title="Mobile Preview"
+            >
+              <Smartphone size={16} />
+            </button>
+          )}
 
-        <button
-          onClick={onNewProject}
-          className="toolbar-btn"
-          title="New Project"
-        >
-          <Plus size={18} />
-          <span className="btn-label">New</span>
-        </button>
-
-        <button
-          onClick={handleClearAll}
-          className="toolbar-btn"
-          title="Clear All"
-          disabled={blocks.length === 0}
-        >
-          <Trash2 size={18} />
-          <span className="btn-label">Clear</span>
-        </button>
-
-        <button
-          onClick={handleSave}
-          className="toolbar-btn save-btn"
-          title="Save"
-        >
-          {showSaved ? <Check size={18} /> : <Save size={18} />}
-          <span className="btn-label">{showSaved ? "Saved!" : "Save"}</span>
-        </button>
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".html,.htm"
-          onChange={handleImport}
-          style={{ display: "none" }}
-        />
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="toolbar-btn"
-          title="Import HTML"
-        >
-          <Upload size={18} />
-          <span className="btn-label">Import</span>
-        </button>
-
-        <button
-          onClick={() => downloadHTML(blocks, projectName)}
-          className="toolbar-btn download-btn"
-          disabled={blocks.length === 0}
-          title="Download HTML"
-        >
-          <Download size={18} />
-          <span className="btn-label">Export</span>
-        </button>
-
-        <div className="toolbar-divider" />
-
-        <button
-          onClick={onOpenSettings}
-          className="toolbar-btn settings-btn"
-          title={modelLabel || "Model Settings"}
-        >
-          <Settings size={18} />
-          <span className="btn-label">{modelLabel || "Model"}</span>
-        </button>
-
-        {onOpenHelp && (
           <button
-            onClick={onOpenHelp}
-            className="toolbar-btn help-btn"
-            title="Help & Tips"
+            onClick={onNewProject}
+            className="toolbar-btn"
+            title="New Project"
           >
-            <HelpCircle size={18} />
-            <span className="btn-label">Help</span>
+            <Plus size={18} />
+            <span className="btn-label">New</span>
           </button>
-        )}
+
+          <button
+            onClick={handleClearAll}
+            className="toolbar-btn"
+            title="Clear All"
+            disabled={blocks.length === 0}
+          >
+            <Trash2 size={18} />
+            <span className="btn-label">Clear</span>
+          </button>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".html,.htm"
+            onChange={handleImport}
+            style={{ display: "none" }}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="toolbar-btn"
+            title="Import HTML"
+          >
+            <Upload size={18} />
+            <span className="btn-label">Import</span>
+          </button>
+
+          <button
+            onClick={() => downloadHTML(blocks, projectName)}
+            className="toolbar-btn download-btn"
+            disabled={blocks.length === 0}
+            title="Download HTML"
+          >
+            <Download size={18} />
+            <span className="btn-label">Export</span>
+          </button>
+        </div>
+
+        <div className="toolbar-primary-group">
+          <button
+            onClick={onOpenSettings}
+            className="toolbar-btn settings-btn"
+            title={modelLabel || "Model Settings"}
+          >
+            <Settings size={18} />
+            <span className="btn-label">{modelLabel || "Model"}</span>
+          </button>
+
+          {onOpenHelp && (
+            <button
+              onClick={onOpenHelp}
+              className="toolbar-btn help-btn"
+              title="Help & Tips"
+            >
+              <HelpCircle size={18} />
+              <span className="btn-label">Help</span>
+            </button>
+          )}
+
+          <button
+            onClick={handleSave}
+            className="toolbar-btn save-btn"
+            title="Save"
+          >
+            {showSaved ? <Check size={18} /> : <Save size={18} />}
+            <span className="btn-label">{showSaved ? "Saved!" : "Save now"}</span>
+          </button>
+        </div>
       </div>
     </div>
   );

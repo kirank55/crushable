@@ -2931,6 +2931,11 @@ h3,
   border-color: var(--border-light);
 }
 
+.template-starter-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .settings-link-btn {
   display: flex;
   align-items: center;

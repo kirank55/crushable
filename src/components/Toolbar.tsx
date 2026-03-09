@@ -32,6 +32,38 @@ function formatSavedTime(timestamp: number): string {
   });
 }
 
+function getSaveStateCopy(
+  isDirty: boolean,
+  showSaved: boolean,
+  lastSavedAt: number | null,
+): { label: string; meta: string } {
+  if (isDirty) {
+    return {
+      label: "Unsaved changes",
+      meta: "Save to keep this version in local history",
+    };
+  }
+
+  if (showSaved) {
+    return {
+      label: "Saved just now",
+      meta: "Local project snapshot updated",
+    };
+  }
+
+  if (lastSavedAt) {
+    return {
+      label: `Saved at ${formatSavedTime(lastSavedAt)}`,
+      meta: "Local project snapshot updated",
+    };
+  }
+
+  return {
+    label: "All changes saved",
+    meta: "Ready for your next change",
+  };
+}
+
 interface ToolbarProps {
   blocks: Block[];
   projectName: string;
@@ -178,19 +210,7 @@ export default function Toolbar({
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const saveStateLabel = isDirty
-    ? "Unsaved changes"
-    : showSaved
-      ? "Saved just now"
-      : lastSavedAt
-        ? `Saved at ${formatSavedTime(lastSavedAt)}`
-        : "All changes saved";
-
-  const saveStateMeta = isDirty
-    ? "Save to keep this version in local history"
-    : lastSavedAt
-      ? "Local project snapshot updated"
-      : "Ready for your next change";
+  const saveState = getSaveStateCopy(isDirty, showSaved, lastSavedAt);
 
   return (
     <div className="toolbar">
@@ -228,8 +248,8 @@ export default function Toolbar({
             </button>
           )}
           <div className={`save-state ${isDirty ? "dirty" : "clean"}`}>
-            <span className="save-state-label">{saveStateLabel}</span>
-            <span className="save-state-meta">{saveStateMeta}</span>
+            <span className="save-state-label">{saveState.label}</span>
+            <span className="save-state-meta">{saveState.meta}</span>
           </div>
         </div>
 

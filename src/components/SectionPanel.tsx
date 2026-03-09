@@ -23,15 +23,36 @@ function moveBlock(blocks: Block[], fromIndex: number, toIndex: number): Block[]
     return next;
 }
 
+const STRUCTURE_PREVIEW = {
+    headingBase: 44,
+    headingGain: 18,
+    headingMax: 88,
+    paragraphBase: 34,
+    paragraphGain: 10,
+    paragraphMax: 78,
+    actionBase: 28,
+    actionGain: 14,
+    actionMax: 68,
+} as const;
+
 function buildStructurePreview(html: string): number[] {
     const headingCount = (html.match(/<h[1-6]\b/gi) || []).length;
     const paragraphCount = (html.match(/<p\b/gi) || []).length;
     const actionCount = (html.match(/<(a|button)\b/gi) || []).length;
 
     return [
-        Math.min(88, 44 + headingCount * 18),
-        Math.min(78, 34 + paragraphCount * 10),
-        Math.min(68, 28 + actionCount * 14),
+        Math.min(
+            STRUCTURE_PREVIEW.headingMax,
+            STRUCTURE_PREVIEW.headingBase + headingCount * STRUCTURE_PREVIEW.headingGain,
+        ),
+        Math.min(
+            STRUCTURE_PREVIEW.paragraphMax,
+            STRUCTURE_PREVIEW.paragraphBase + paragraphCount * STRUCTURE_PREVIEW.paragraphGain,
+        ),
+        Math.min(
+            STRUCTURE_PREVIEW.actionMax,
+            STRUCTURE_PREVIEW.actionBase + actionCount * STRUCTURE_PREVIEW.actionGain,
+        ),
     ];
 }
 

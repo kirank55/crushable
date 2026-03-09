@@ -36,6 +36,7 @@ export default function HomePage() {
         : TEMPLATE_LIBRARY.filter((template) => template.category === activeTemplateCategory),
     [activeTemplateCategory]
   );
+  const firstTemplate = filteredTemplates[0] || TEMPLATE_LIBRARY[0];
 
   const handleDelete = useCallback((id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -98,13 +99,14 @@ export default function HomePage() {
               <span className="hero-action-label">Use a template</span>
               <button
                 onClick={() => {
-                  const firstTemplate = filteredTemplates[0] || TEMPLATE_LIBRARY[0];
+                  if (!firstTemplate) return;
                   router.push(`/project/new?template=${firstTemplate.id}`);
                 }}
                 className="template-starter-btn"
+                disabled={!firstTemplate}
               >
                 <LayoutTemplate size={18} />
-                <span>Start from {filteredTemplates[0]?.name || 'a template'}</span>
+                <span>Start from {firstTemplate?.name || 'a template'}</span>
               </button>
               <p>Choose a use-case below, then customize sections, copy, and layout with chat.</p>
             </div>

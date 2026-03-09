@@ -361,10 +361,7 @@ export default function ChatPanel({
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const selectedBlock = blocks.find((b) => b.id === selectedBlockId);
-  const selectedStyle = useMemo(
-    () => DESIGN_STYLES.find((style) => style.id === designStyle),
-    [designStyle],
-  );
+  const selectedStyle = DESIGN_STYLES.find((style) => style.id === designStyle);
   const promptSuggestions = useMemo(() => {
     if (selectedBlock) {
       return [

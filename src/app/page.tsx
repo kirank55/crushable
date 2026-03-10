@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Project } from '@/types';
 import { getProjects, deleteProject } from '@/lib/storage';
@@ -20,7 +20,13 @@ import { TEMPLATE_LIBRARY } from '@/lib/templates';
 
 export default function HomePage() {
   const router = useRouter();
-  const [projects, setProjects] = useState<Project[]>(() => getProjects());
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setProjects(getProjects());
+    setMounted(true);
+  }, []);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [activeTemplateCategory, setActiveTemplateCategory] = useState('All');
 
@@ -71,7 +77,7 @@ export default function HomePage() {
                 <span>starter templates</span>
               </div>
               <div className="project-hero-metric">
-                <strong>{projects.length}</strong>
+                <strong>{mounted ? projects.length : '—'}</strong>
                 <span>recent local projects</span>
               </div>
               <div className="project-hero-metric">
@@ -158,15 +164,11 @@ export default function HomePage() {
                     <span className="template-card-category">{template.category}</span>
                     <span className="template-card-style">{template.designStyle}</span>
                   </div>
-                  <h3>{template.name}</h3>
                   <p>{template.description}</p>
-                  <div className="template-card-footer">
-                    <span className="template-card-usecase">{template.preview.eyebrow}</span>
-                    <span className="template-card-cta">
-                      Open template
-                      <ArrowRight size={14} />
-                    </span>
-                  </div>
+                  <span className="template-card-cta">
+                    Open template
+                    <ArrowRight size={14} />
+                  </span>
                 </div>
               </button>
             ))}

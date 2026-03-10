@@ -40,27 +40,27 @@ function getSaveStateCopy(
   if (isDirty) {
     return {
       label: "Unsaved changes",
-      meta: "Save to keep this version in local history",
+      meta: "",
     };
   }
 
   if (showSaved) {
     return {
-      label: "Saved just now",
-      meta: "Local project snapshot updated",
+      label: "Saved ✓",
+      meta: "",
     };
   }
 
   if (lastSavedAt) {
     return {
       label: `Saved at ${formatSavedTime(lastSavedAt)}`,
-      meta: "Local project snapshot updated",
+      meta: "",
     };
   }
 
   return {
     label: "All changes saved",
-    meta: "Ready for your next change",
+    meta: "",
   };
 }
 

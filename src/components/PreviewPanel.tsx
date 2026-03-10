@@ -289,14 +289,18 @@ export default function PreviewPanel({
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
   ${consoleInterceptor}
   <style>
-    body { font-family: 'Inter', system-ui, sans-serif; margin: 0; cursor: default; background: ${STYLE_BODY_BG[designStyle || ''] || '#ffffff'}; }
+    body { font-family: 'Inter', system-ui, sans-serif; margin: 0; cursor: default; background:
+      radial-gradient(circle at top, rgba(56, 189, 248, 0.08), transparent 24%),
+      ${STYLE_BODY_BG[designStyle || ''] || '#ffffff'}; }
     [data-block-id] { cursor: pointer; }
     .empty-state {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      min-height: 100vh; color: #94a3b8; background: #f8fafc;
-      font-size: 1.1rem; gap: 8px;
+      min-height: 100vh; color: #64748b; background:
+      radial-gradient(circle at top, rgba(56, 189, 248, 0.08), transparent 24%),
+      linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+      font-size: 1.1rem; gap: 10px;
     }
-    .empty-state svg { width: 48px; height: 48px; stroke: #cbd5e1; }
+    .empty-state svg { width: 52px; height: 52px; stroke: #94a3b8; }
     .crushable-block-overlay {
       position: absolute;
       pointer-events: none;
@@ -306,13 +310,13 @@ export default function PreviewPanel({
       transition: opacity 0.16s ease, transform 0.16s ease;
     }
     .crushable-block-overlay.hover {
-      border: 2px dashed rgba(37, 99, 235, 0.55);
-      background: rgba(37, 99, 235, 0.08);
+      border: 2px dashed rgba(59, 130, 246, 0.52);
+      background: rgba(59, 130, 246, 0.08);
     }
     .crushable-block-overlay.selected {
-      border: 2px solid rgba(37, 99, 235, 0.95);
-      background: rgba(37, 99, 235, 0.12);
-      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5), 0 18px 32px rgba(37, 99, 235, 0.18);
+      border: 2px solid rgba(139, 92, 246, 0.95);
+      background: rgba(139, 92, 246, 0.12);
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5), 0 18px 32px rgba(76, 29, 149, 0.2);
     }
     .crushable-block-badge {
       position: absolute;
@@ -320,7 +324,7 @@ export default function PreviewPanel({
       left: 12px;
       padding: 4px 8px;
       border-radius: 999px;
-      background: rgba(15, 23, 42, 0.92);
+      background: rgba(15, 23, 42, 0.94);
       color: #eff6ff;
       font-family: 'Inter', system-ui, sans-serif;
       font-size: 11px;
@@ -504,20 +508,40 @@ ${'<'}/script>
 
       {viewMode === 'preview' ? (
         <div className={`preview-container ${mobilePreview ? 'mobile' : ''}`}>
-          <iframe
-            ref={iframeRef}
-            key={previewDocKey}
-            srcDoc={htmlContent}
-            title="Page Preview"
-            sandbox="allow-scripts allow-same-origin"
-            className="preview-iframe"
-            onLoad={() => setIframeLoadTick((prev) => prev + 1)}
-          />
+          <div className={`preview-stage ${mobilePreview ? 'mobile' : 'desktop'}`}>
+            <div className="preview-stage-header">
+              <div>
+                <span className="preview-stage-eyebrow">{mobilePreview ? 'Mobile canvas' : 'Desktop canvas'}</span>
+                <strong>{visibleBlocks.length > 0 ? `${visibleBlocks.length} visible sections` : 'Awaiting content'}</strong>
+              </div>
+              <span className="preview-stage-pill">{mobilePreview ? '390px viewport' : 'Fluid viewport'}</span>
+            </div>
+            <div className={`preview-frame ${mobilePreview ? 'mobile' : ''}`}>
+              {mobilePreview && (
+                <div className="preview-device-chrome" aria-hidden="true">
+                  <span className="preview-device-notch" />
+                  <span className="preview-device-speaker" />
+                </div>
+              )}
+              <iframe
+                ref={iframeRef}
+                key={previewDocKey}
+                srcDoc={htmlContent}
+                title="Page Preview"
+                sandbox="allow-scripts allow-same-origin"
+                className="preview-iframe"
+                onLoad={() => setIframeLoadTick((prev) => prev + 1)}
+              />
+            </div>
+          </div>
         </div>
       ) : viewMode === 'code' ? (
         <div className="code-view">
           <div className="code-toolbar">
-            <span className="code-lang-badge">HTML</span>
+            <div className="code-toolbar-meta">
+              <span className="code-lang-badge">HTML</span>
+              <span className="code-toolbar-hint">Edit visible sections directly and save to rebuild the block list.</span>
+            </div>
             <div className="code-toolbar-actions">
               {isEditing ? (
                 <>
@@ -574,6 +598,7 @@ ${'<'}/script>
       ) : (
         <div className="console-view">
           <div className="console-toolbar">
+            <span className="console-toolbar-label">Runtime console</span>
             <button onClick={clearConsole} className="console-clear-btn">Clear</button>
           </div>
           <div className="console-logs">

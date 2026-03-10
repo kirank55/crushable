@@ -77,7 +77,10 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <div className="modal-header">
                     <div className="modal-title">
                         <SettingsIcon size={20} />
-                        <h2>Model Settings</h2>
+                        <div>
+                            <h2>Model Settings</h2>
+                            <p className="modal-subtitle">Choose the model, connect OpenRouter, and verify generation before you build.</p>
+                        </div>
                     </div>
                     <button onClick={onClose} className="modal-close">
                         <X size={20} />
@@ -127,13 +130,13 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         <button onClick={handleTest} className="test-button" disabled={testStatus === 'testing'}>
                             {testStatus === 'testing' ? 'Testing...' : 'Test Connection'}
                         </button>
-                        {testStatus === 'success' && (
-                            <span className="test-result success"><CheckCircle size={14} /> {testMessage}</span>
-                        )}
-                        {testStatus === 'error' && (
-                            <span className="test-result error"><AlertCircle size={14} /> {testMessage}</span>
-                        )}
                     </div>
+                    {testStatus === 'success' && (
+                        <span className="test-result success"><CheckCircle size={14} /> {testMessage}</span>
+                    )}
+                    {testStatus === 'error' && (
+                        <span className="test-result error"><AlertCircle size={14} /> {testMessage}</span>
+                    )}
                 </div>
 
                 <div className="modal-footer">

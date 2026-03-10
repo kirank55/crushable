@@ -16,7 +16,10 @@ export default function HelpModal({ isOpen, onClose }: HelpModalProps) {
                 <div className="modal-header">
                     <div className="modal-title">
                         <HelpCircle size={20} />
-                        <h2>How to Use Crushable</h2>
+                        <div>
+                            <h2>How to Use Crushable</h2>
+                            <p className="modal-subtitle">A quick guide for planning pages, editing sections, and exporting polished HTML.</p>
+                        </div>
                     </div>
                     <button onClick={onClose} className="modal-close">
                         <X size={20} />

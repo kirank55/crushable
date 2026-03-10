@@ -28,7 +28,10 @@ export default function VersionsPanel({
                 <div className="sidebar-header">
                     <div className="sidebar-title">
                         <History size={18} />
-                        <span>Versions</span>
+                        <div>
+                            <span>Versions</span>
+                            <p className="sidebar-subtitle">Jump between snapshots with clear live-versus-history context.</p>
+                        </div>
                     </div>
                     <button onClick={onClose} className="sidebar-close">
                         <X size={18} />

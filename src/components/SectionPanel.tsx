@@ -23,6 +23,39 @@ function moveBlock(blocks: Block[], fromIndex: number, toIndex: number): Block[]
     return next;
 }
 
+const STRUCTURE_PREVIEW = {
+    headingBase: 44,
+    headingGain: 18,
+    headingMax: 88,
+    paragraphBase: 34,
+    paragraphGain: 10,
+    paragraphMax: 78,
+    actionBase: 28,
+    actionGain: 14,
+    actionMax: 68,
+} as const;
+
+function buildStructurePreview(html: string): number[] {
+    const headingCount = (html.match(/<h[1-6]\b/gi) || []).length;
+    const paragraphCount = (html.match(/<p\b/gi) || []).length;
+    const actionCount = (html.match(/<(a|button)\b/gi) || []).length;
+
+    return [
+        Math.min(
+            STRUCTURE_PREVIEW.headingMax,
+            STRUCTURE_PREVIEW.headingBase + headingCount * STRUCTURE_PREVIEW.headingGain,
+        ),
+        Math.min(
+            STRUCTURE_PREVIEW.paragraphMax,
+            STRUCTURE_PREVIEW.paragraphBase + paragraphCount * STRUCTURE_PREVIEW.paragraphGain,
+        ),
+        Math.min(
+            STRUCTURE_PREVIEW.actionMax,
+            STRUCTURE_PREVIEW.actionBase + actionCount * STRUCTURE_PREVIEW.actionGain,
+        ),
+    ];
+}
+
 export default function SectionPanel({
     blocks,
     selectedBlockId,
@@ -82,6 +115,7 @@ export default function SectionPanel({
                         const isSelected = block.id === selectedBlockId;
                         const isHidden = block.visible === false;
                         const isDropTarget = block.id === dropTargetBlockId && draggedBlockId !== block.id;
+                        const structurePreview = buildStructurePreview(block.html);
 
                         return (
                             <button
@@ -115,6 +149,15 @@ export default function SectionPanel({
 
                                 <span className="section-item-content">
                                     <span className="section-item-order">{String(index + 1).padStart(2, '0')}</span>
+                                    <span className="section-item-thumbnail" aria-hidden="true">
+                                        {structurePreview.map((width, previewIndex) => (
+                                            <span
+                                                key={`${block.id}-${previewIndex}`}
+                                                className="section-item-thumbnail-line"
+                                                style={{ width: `${width}%` }}
+                                            />
+                                        ))}
+                                    </span>
                                     <span className="section-item-text">
                                         <span className="section-item-title">{block.label}</span>
                                         <span className="section-item-meta">{block.id}{isHidden ? ' · hidden in preview' : ''}</span>

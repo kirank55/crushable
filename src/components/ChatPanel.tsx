@@ -9,6 +9,7 @@ import {
   Send,
   Loader2,
   Sparkles,
+  Lightbulb,
   ChevronDown,
   ChevronRight,
   Code,
@@ -31,6 +32,8 @@ import {
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { logger } from "@/lib/logger";
+import { generateFullHTML } from "@/lib/export";
+import { validateGeneratedHtml, ValidationIssue } from "@/lib/validate";
 
 interface ChatPanelProps {
   blocks: Block[];
@@ -348,11 +351,13 @@ export default function ChatPanel({
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [planDraft, setPlanDraft] = useState("");
   const [usedPlanIds, setUsedPlanIds] = useState<Set<string>>(new Set());
-  const [setupPhase, setSetupPhase] = useState<"design" | "details" | "ready">(
-    designStyle ? "ready" : "design",
+  const [setupPhase, setSetupPhase] = useState<"details" | "ready">(
+    designStyle ? "ready" : "details",
   );
   const [setupDetails, setSetupDetails] = useState<ProjectDetails>({});
   const [triedToProceed, setTriedToProceed] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(true);
+  const [isAutoSelectingStyle, setIsAutoSelectingStyle] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastPersistedMessageIdsRef = useRef("");
   const lastPersistedMessageSignatureRef = useRef("");
@@ -432,8 +437,9 @@ export default function ChatPanel({
     setPlanDraft("");
     lastPersistedMessageIdsRef.current = "";
     lastPersistedMessageSignatureRef.current = "";
-    setSetupPhase(designStyle ? "ready" : "design");
+    setSetupPhase(designStyle ? "ready" : "details");
     setSetupDetails({});
+    setShowSuggestions(true);
   }, [resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load initial messages when they change (e.g. project switch)
@@ -531,14 +537,82 @@ export default function ChatPanel({
 
   const handleDesignStyleSelect = (styleId: string) => {
     onSetDesignStyle(styleId);
-    setSetupPhase("details");
   };
 
-  const handleSetupComplete = () => {
-    if ((setupDetails.productDescription || "").trim().length < 50) return;
-    onSetProjectDetails(setupDetails);
-    setSetupPhase("ready");
-  };
+  const requestStyleSelection = useCallback(async (productDescription: string): Promise<string> => {
+    const response = await fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: productDescription,
+        mode: 'style-select',
+        apiKey: getApiKey(),
+        model: getModel(),
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => null);
+      throw new Error(error?.error || 'Failed to select a design style.');
+    }
+
+    const styleId = (await response.text()).trim();
+    return DESIGN_STYLES.some((style) => style.id === styleId) ? styleId : 'professional';
+  }, []);
+
+  const summarizeValidationIssues = useCallback((issues: ValidationIssue[]) => {
+    if (issues.length === 0) {
+      return 'Validation complete — no issues found in the assembled page.';
+    }
+
+    const preview = issues
+      .slice(0, 3)
+      .map((issue) => issue.message)
+      .join(' ');
+
+    return `Validation found ${issues.length} issue${issues.length === 1 ? '' : 's'}: ${preview}`;
+  }, []);
+
+  const runGenerationValidation = useCallback((candidateBlocks: Block[]) => {
+    const fullHtml = generateFullHTML(candidateBlocks);
+    const issues = validateGeneratedHtml(fullHtml);
+
+    const validationMessage: Message = {
+      id: uuidv4(),
+      role: 'assistant',
+      content: '',
+      summary: summarizeValidationIssues(issues),
+      timestamp: Date.now(),
+    };
+
+    setMessages((prev) => [...prev, validationMessage]);
+    return issues;
+  }, [summarizeValidationIssues]);
+
+  const handleSetupComplete = useCallback(async () => {
+    const productDescription = (setupDetails.productDescription || '').trim();
+    if (productDescription.length < 50) return;
+
+    try {
+      setIsAutoSelectingStyle(true);
+
+      let resolvedStyle = designStyle;
+      if (!resolvedStyle) {
+        resolvedStyle = await requestStyleSelection(productDescription);
+        onSetDesignStyle(resolvedStyle);
+      }
+
+      onSetProjectDetails(setupDetails);
+      setSetupPhase('ready');
+    } catch (error) {
+      logger.error('Style selection', error);
+      onSetDesignStyle('professional');
+      onSetProjectDetails(setupDetails);
+      setSetupPhase('ready');
+    } finally {
+      setIsAutoSelectingStyle(false);
+    }
+  }, [designStyle, onSetDesignStyle, onSetProjectDetails, requestStyleSelection, setupDetails]);
 
   /** Generate a single section via API */
   const generateSection = useCallback(
@@ -673,9 +747,11 @@ export default function ChatPanel({
         await new Promise((resolve) => setTimeout(resolve, 300));
       }
 
+      runGenerationValidation([...blocks, ...results.map((result) => createBlock(result.html))]);
+
       return results;
     },
-    [generateSection, onAddBlock],
+    [blocks, generateSection, onAddBlock, runGenerationValidation],
   );
 
   /** Handle multi-section generation (e.g. "build a landing page") */
@@ -808,9 +884,11 @@ export default function ChatPanel({
         await new Promise((resolve) => setTimeout(resolve, 300));
       }
 
+      runGenerationValidation([...blocks, ...results.map((result) => createBlock(result.html))]);
+
       return results;
     },
-    [designStylePrompt, projectContext, generateSection, onAddBlock],
+    [blocks, designStylePrompt, projectContext, generateSection, onAddBlock, runGenerationValidation],
   );
 
   const handleSubmit = async (
@@ -1225,7 +1303,12 @@ export default function ChatPanel({
     try {
       const apiKey = getApiKey();
       const model = getModel();
-      const style = DESIGN_STYLES.find((item) => item.id === designStyle);
+      let resolvedStyleId = designStyle;
+      if (!resolvedStyleId && (setupDetails.productDescription || '').trim().length >= 50) {
+        resolvedStyleId = await requestStyleSelection((setupDetails.productDescription || '').trim());
+        onSetDesignStyle(resolvedStyleId);
+      }
+      const style = DESIGN_STYLES.find((item) => item.id === resolvedStyleId);
 
       const response = await fetch("/api/generate", {
         method: "POST",
@@ -1468,49 +1551,6 @@ export default function ChatPanel({
 
   // === SETUP SCREENS ===
 
-  if (setupPhase === "design" && blocks.length === 0) {
-    return (
-      <div className={`chat-panel ${isFullScreen ? "full-screen" : ""}`}>
-        <div className="chat-messages">
-          <div className="chat-empty">
-            <div className="setup-progress" aria-label="Builder setup progress">
-              <span className="setup-progress-step active">1. Style</span>
-              <span className="setup-progress-step">2. Details</span>
-              <span className="setup-progress-step">3. Build</span>
-            </div>
-            <Sparkles size={32} strokeWidth={1.5} />
-            <h3>Choose a Design Style</h3>
-            <p>Pick a visual direction for your project. You can refine sections later, but this gives the builder a clear creative north star.</p>
-            <div className="design-style-grid">
-              {DESIGN_STYLES.map((style) => (
-                <button
-                  key={style.id}
-                  onClick={() => handleDesignStyleSelect(style.id)}
-                  className="design-style-option"
-                >
-                  <span className={`design-style-preview ${style.id}`} aria-hidden="true">
-                    <span />
-                    <span />
-                    <span />
-                  </span>
-                  <span className="design-style-emoji">{style.emoji}</span>
-                  <span className="design-style-label">{style.label}</span>
-                  <span className="design-style-desc">{style.description}</span>
-                </button>
-              ))}
-            </div>
-            <button
-              onClick={() => handleDesignStyleSelect("professional")}
-              className="skip-design-btn"
-            >
-              Skip
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   if (setupPhase === "details" && blocks.length === 0) {
     const productDescriptionLength = (
       setupDetails.productDescription || ""
@@ -1521,18 +1561,33 @@ export default function ChatPanel({
         <div className="chat-messages">
           <div className="chat-empty setup-form">
             <div className="setup-progress" aria-label="Builder setup progress">
-              <span className="setup-progress-step complete">1. Style</span>
-              <span className="setup-progress-step active">2. Details</span>
-              <span className="setup-progress-step">3. Build</span>
-            </div>
-            <div className="design-style-badge">
-              {selectedStyle?.emoji} {selectedStyle?.label} style
+              <span className="setup-progress-step active">1. Details</span>
+              <span className="setup-progress-step">2. Build</span>
             </div>
             <h3>
               Project Details
             </h3>
             <p>Provide the essentials so Crushable can plan stronger sections and keep the first draft aligned with your product.</p>
             <div className="setup-fields">
+              <div className="setup-field">
+                <label>Design Style <span className="optional-tag">optional</span></label>
+                <select
+                  value={designStyle || ''}
+                  onChange={(e) => handleDesignStyleSelect(e.target.value)}
+                >
+                  <option value="">Auto-select from product description</option>
+                  {DESIGN_STYLES.map((style) => (
+                    <option key={style.id} value={style.id}>
+                      {style.label}
+                    </option>
+                  ))}
+                </select>
+                <span className="setup-field-hint">
+                  {selectedStyle
+                    ? `${selectedStyle.emoji} ${selectedStyle.label} will guide generation.`
+                    : 'Leave this on auto and Crushable will choose the best fit from your description.'}
+                </span>
+              </div>
               <div className="setup-field">
                 <label>Brand / Company Name  <span className="optional-tag">optional</span></label>
                 <input
@@ -1616,15 +1671,6 @@ export default function ChatPanel({
             <div className="setup-actions">
               <button
                 onClick={() => {
-                  onSetDesignStyle('');
-                  setSetupPhase("design");
-                }}
-                className="skip-design-btn"
-              >
-                ← Back
-              </button>
-              <button
-                onClick={() => {
                   if (!canContinue) {
                     setTriedToProceed(true);
                     return;
@@ -1632,9 +1678,9 @@ export default function ChatPanel({
                   handleSetupComplete();
                 }}
                 className="setup-continue-btn"
-                disabled={!canContinue}
+                disabled={!canContinue || isAutoSelectingStyle}
               >
-                Start Building →
+                {isAutoSelectingStyle ? 'Choosing style…' : 'Start Building →'}
               </button>
             </div>
           </div>
@@ -1651,9 +1697,8 @@ export default function ChatPanel({
         {messages.length === 0 && (
           <div className="chat-empty">
             <div className="setup-progress compact" aria-label="Builder setup progress">
-              <span className="setup-progress-step complete">1. Style</span>
-              <span className="setup-progress-step complete">2. Details</span>
-              <span className="setup-progress-step active">3. Build</span>
+              <span className="setup-progress-step complete">1. Details</span>
+              <span className="setup-progress-step active">2. Build</span>
             </div>
             <Sparkles size={32} strokeWidth={1.5} />
             <h3>Welcome to Crushable</h3>
@@ -1675,8 +1720,20 @@ export default function ChatPanel({
               Generate Landing Page
             </button>
 
-            <div className="chat-suggestions">
-              {promptSuggestions.map((suggestion) => (
+            <div className="suggestions-header">
+              <span>Suggestions</span>
+              <button
+                type="button"
+                className={`suggestions-toggle ${showSuggestions ? 'active' : ''}`}
+                onClick={() => setShowSuggestions((value) => !value)}
+              >
+                <Lightbulb size={14} />
+                {showSuggestions ? 'Hide' : 'Show'}
+              </button>
+            </div>
+
+            <div className={`chat-suggestions ${showSuggestions ? 'expanded' : 'collapsed'}`}>
+              {showSuggestions && promptSuggestions.map((suggestion) => (
                 <button
                   key={suggestion.label}
                   onClick={() => setInput(suggestion.prompt)}
@@ -2006,20 +2063,33 @@ export default function ChatPanel({
             </button>
           </div>
         </div>
-        <div className="prompt-chip-row">
-          {promptSuggestions.map((suggestion) => (
-            <button
-              key={`input-${suggestion.label}`}
-              type="button"
-              className="prompt-chip"
-              onClick={() => setInput(suggestion.prompt)}
-              disabled={isLoading}
-            >
-              {suggestion.icon}
-              <span>{suggestion.label}</span>
-            </button>
-          ))}
+        <div className="suggestions-header compact">
+          <span>Quick prompts</span>
+          <button
+            type="button"
+            className={`suggestions-toggle ${showSuggestions ? 'active' : ''}`}
+            onClick={() => setShowSuggestions((value) => !value)}
+          >
+            <Lightbulb size={14} />
+            {showSuggestions ? 'Hide' : 'Show'}
+          </button>
         </div>
+        {showSuggestions && (
+          <div className="prompt-chip-row">
+            {promptSuggestions.map((suggestion) => (
+              <button
+                key={`input-${suggestion.label}`}
+                type="button"
+                className="prompt-chip"
+                onClick={() => setInput(suggestion.prompt)}
+                disabled={isLoading}
+              >
+                {suggestion.icon}
+                <span>{suggestion.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <div className="input-shortcuts-hint">
           Enter sends, Shift+Enter adds a new line, Ctrl/Cmd+S saves, Ctrl/Cmd+Z undoes, Esc clears selection.
         </div>

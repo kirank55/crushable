@@ -5,15 +5,14 @@ import { useState, useMemo, useCallback, useEffect, use, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { usePageState } from '@/hooks/usePageState';
 import { DESIGN_STYLES } from '@/types';
-import { MessageSquare } from 'lucide-react';
 import PreviewPanel from '@/components/PreviewPanel';
 import ChatPanel, { ProjectDetails } from '@/components/ChatPanel';
-import SectionPanel from '@/components/SectionPanel';
 import Toolbar from '@/components/Toolbar';
 import SettingsModal from '@/components/SettingsModal';
 import VersionsPanel from '@/components/VersionsPanel';
 import HelpModal from '@/components/HelpModal';
 import { createBlock } from '@/lib/blocks';
+import { generateFullHTML } from '@/lib/export';
 import { parseImportedHtml } from '@/lib/import';
 import { logger } from '@/lib/logger';
 import { getTemplateById } from '@/lib/templates';
@@ -85,12 +84,23 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
     const [chatResetKey, setChatResetKey] = useState(0);
     const [viewMode, setViewMode] = useState<'preview' | 'code' | 'console'>('preview');
     const [helpOpen, setHelpOpen] = useState(false);
-    const [sectionsVisible, setSectionsVisible] = useState(true);
+    const [refreshKey, setRefreshKey] = useState(0);
 
     const handlePreviewSelect = useCallback((blockId: string) => {
         setChatVisible(true);
         selectBlock(blockId);
     }, [selectBlock]);
+
+    const handleOpenInNewTab = useCallback(() => {
+        if (blocks.length === 0) return;
+
+        const html = generateFullHTML(blocks, projectName);
+        const blob = new Blob([html], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+
+        window.open(url, '_blank', 'noopener,noreferrer');
+        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    }, [blocks, projectName]);
 
     const designStylePrompt = useMemo(() => {
         if (!designStyle) return undefined;
@@ -112,6 +122,57 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
         if (projectDetails.ctaText) parts.push(`Primary CTA Button Text: ${projectDetails.ctaText}`);
         return parts.length > 0 ? parts.join('\n') : undefined;
     }, [projectDetails]);
+
+    const handleElementEdit = useCallback(async (blockId: string, elementSelector: string, instruction: string) => {
+        const block = blocks.find((entry) => entry.id === blockId);
+        if (!block) {
+            throw new Error('Selected block was not found.');
+        }
+
+        const parser = new DOMParser();
+        const documentFragment = parser.parseFromString(block.html, 'text/html');
+        const section = documentFragment.body.querySelector('section');
+        const targetElement = elementSelector === '__section_root__'
+            ? section
+            : section?.querySelector(elementSelector);
+
+        if (!section || !targetElement) {
+            throw new Error('Selected element could not be resolved.');
+        }
+
+        const response = await fetch('/api/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                prompt: instruction,
+                currentHtml: targetElement.outerHTML,
+                blockId,
+                mode: 'element-edit',
+                designStylePrompt,
+                projectContext,
+            }),
+        });
+
+        if (!response.ok) {
+            const error = await response.json().catch(() => null);
+            throw new Error(error?.error || 'Failed to update the selected element.');
+        }
+
+        const updatedFragment = (await response.text()).trim();
+        if (!updatedFragment) {
+            throw new Error('Element edit returned empty HTML.');
+        }
+
+        if (elementSelector === '__section_root__') {
+            updateBlock(blockId, updatedFragment);
+        } else {
+            targetElement.outerHTML = updatedFragment;
+            updateBlock(blockId, section.outerHTML);
+        }
+
+        createVersionSnapshot(`Element edit: ${instruction}`);
+        selectBlock(blockId);
+    }, [blocks, createVersionSnapshot, designStylePrompt, projectContext, selectBlock, updateBlock]);
 
     const handleNewProject = useCallback(() => {
         handleNew();
@@ -224,13 +285,12 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
                 onNewProject={handleNewProject}
                 onClearAll={clearAll}
                 onImportBlocks={importBlocks}
-                onToggleMobilePreview={() => setMobilePreview(!mobilePreview)}
                 onOpenVersions={() => setVersionsOpen(true)}
                 onHideChat={() => setChatVisible(false)}
+                onShowChat={() => setChatVisible(true)}
                 onOpenHelp={() => setHelpOpen(true)}
-                onToggleSectionsPanel={() => setSectionsVisible((prev) => !prev)}
+                onOpenInNewTab={handleOpenInNewTab}
                 chatVisible={chatVisible}
-                sectionsVisible={sectionsVisible}
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
             />
@@ -258,38 +318,19 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
                         onMessagesChange={setSavedMessages}
                     />
                 </div>
-
-                {!chatVisible && !isChatFullScreen && (
-                    <button
-                        className="chat-show-btn"
-                        onClick={() => setChatVisible(true)}
-                        title="Show Chat Panel"
-                    >
-                        <MessageSquare size={18} />
-                    </button>
-                )}
-
                 {!isChatFullScreen && (
-                    <>
-                        {sectionsVisible && (
-                            <SectionPanel
-                                blocks={blocks}
-                                selectedBlockId={selectedBlockId}
-                                onSelectBlock={handlePreviewSelect}
-                                onReorderBlocks={reorderBlocks}
-                                onDuplicateBlock={duplicateBlock}
-                                onRemoveBlock={removeBlock}
-                                onToggleVisibility={toggleBlockVisibility}
-                            />
-                        )}
-
                     <PreviewPanel
                         blocks={blocks}
                         mobilePreview={mobilePreview}
                         designStyle={designStyle}
                         selectedBlockId={selectedBlockId}
                         viewMode={viewMode}
+                        projectName={projectName}
+                        refreshKey={refreshKey}
                         onSelectBlock={handlePreviewSelect}
+                        onRefresh={() => setRefreshKey((value) => value + 1)}
+                        onToggleMobilePreview={() => setMobilePreview((value) => !value)}
+                        onElementEdit={handleElementEdit}
                         onCodeSave={(editedHtml) => {
                             // Parse the edited HTML back into individual section blocks
                             const parsed = parseImportedHtml(`<body>${editedHtml}</body>`);
@@ -304,7 +345,6 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
                             createVersionSnapshot('Manual code edit');
                         }}
                     />
-                    </>
                 )}
             </div>
 

@@ -10,14 +10,14 @@ import {
   Trash2,
   Check,
   Upload,
-  Smartphone,
   History,
   PanelLeftClose,
+  MessageSquare,
   Eye,
   Code,
   Terminal,
   HelpCircle,
-  Layers,
+  ExternalLink,
 } from "lucide-react";
 import { downloadHTML } from "@/lib/export";
 import { getApiKey, getModel } from "@/lib/storage";
@@ -75,13 +75,12 @@ interface ToolbarProps {
   onNewProject: () => void;
   onClearAll: () => void;
   onImportBlocks: (blocks: Block[]) => void;
-  onToggleMobilePreview?: () => void;
   onOpenVersions?: () => void;
   onHideChat?: () => void;
+  onShowChat?: () => void;
   onOpenHelp?: () => void;
-  onToggleSectionsPanel?: () => void;
+  onOpenInNewTab?: () => void;
   chatVisible?: boolean;
-  sectionsVisible?: boolean;
   viewMode?: "preview" | "code" | "console";
   onViewModeChange?: (mode: "preview" | "code" | "console") => void;
 }
@@ -97,13 +96,12 @@ export default function Toolbar({
   onNewProject,
   onClearAll,
   onImportBlocks,
-  onToggleMobilePreview,
   onOpenVersions,
   onHideChat,
+  onShowChat,
   onOpenHelp,
-  onToggleSectionsPanel,
+  onOpenInNewTab,
   chatVisible,
-  sectionsVisible,
   viewMode,
   onViewModeChange,
 }: ToolbarProps) {
@@ -263,7 +261,7 @@ export default function Toolbar({
               <History size={16} />
             </button>
           )}
-          {onHideChat && chatVisible && (
+          {chatVisible ? (
             <button
               onClick={onHideChat}
               className="header-action-btn"
@@ -271,14 +269,13 @@ export default function Toolbar({
             >
               <PanelLeftClose size={16} />
             </button>
-          )}
-          {onToggleSectionsPanel && (
+          ) : (
             <button
-              onClick={onToggleSectionsPanel}
-              className={`header-action-btn ${sectionsVisible ? "active" : ""}`}
-              title="Toggle Sections Panel"
+              onClick={onShowChat}
+              className="header-action-btn"
+              title="Show Chat"
             >
-              <Layers size={16} />
+              <MessageSquare size={16} />
             </button>
           )}
         </div>
@@ -314,13 +311,13 @@ export default function Toolbar({
 
       <div className="toolbar-right">
         <div className="toolbar-utility-group">
-          {onToggleMobilePreview && (
+          {onOpenInNewTab && (
             <button
-              onClick={onToggleMobilePreview}
+              onClick={onOpenInNewTab}
               className="header-action-btn"
-              title="Mobile Preview"
+              title="Open Preview in New Tab"
             >
-              <Smartphone size={16} />
+              <ExternalLink size={16} />
             </button>
           )}
 

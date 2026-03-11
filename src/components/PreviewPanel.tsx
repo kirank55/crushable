@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Block } from '@/types';
-import { Copy, Check, Pencil, Save, X } from 'lucide-react';
+import { Copy, Check, Pencil, Save, X, Globe, Monitor, Smartphone, RefreshCw, Sparkles } from 'lucide-react';
 
 interface ConsoleLine {
   type: 'log' | 'warn' | 'error' | 'info';
@@ -16,8 +16,20 @@ interface PreviewPanelProps {
   designStyle?: string;
   selectedBlockId?: string | null;
   viewMode: 'preview' | 'code' | 'console';
+  projectName: string;
+  refreshKey: number;
   onSelectBlock?: (blockId: string) => void;
+  onRefresh?: () => void;
+  onToggleMobilePreview?: () => void;
+  onElementEdit?: (blockId: string, elementSelector: string, instruction: string) => Promise<void> | void;
   onCodeSave?: (sectionsHtml: string) => void;
+}
+
+interface SelectedElementState {
+  blockId: string;
+  selector: string;
+  tagName: string;
+  textPreview: string;
 }
 
 // Map design style to body background color
@@ -35,7 +47,12 @@ export default function PreviewPanel({
   designStyle,
   selectedBlockId,
   viewMode,
+  projectName,
+  refreshKey,
   onSelectBlock,
+  onRefresh,
+  onToggleMobilePreview,
+  onElementEdit,
   onCodeSave,
 }: PreviewPanelProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -48,11 +65,26 @@ export default function PreviewPanel({
   const editRef = useRef<HTMLTextAreaElement>(null);
   const editHighlightRef = useRef<HTMLPreElement>(null);
   const [codeCopied, setCodeCopied] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [selectedElement, setSelectedElement] = useState<SelectedElementState | null>(null);
+  const [elementInstruction, setElementInstruction] = useState('');
+  const [elementEditError, setElementEditError] = useState<string | null>(null);
+  const [isApplyingElementEdit, setIsApplyingElementEdit] = useState(false);
   const lastAppliedSelectionRef = useRef<string | null>(null);
   const visibleBlocks = useMemo(
     () => blocks.filter((block) => block.visible !== false),
     [blocks]
   );
+
+  const previewUrl = useMemo(() => {
+    const slug = projectName
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+
+    return `${slug || 'your-project'}.crushable.dev`;
+  }, [projectName]);
 
   const selectedBlockHtml = useMemo(
     () => blocks.find((block) => block.id === selectedBlockId)?.html ?? '',
@@ -94,6 +126,28 @@ export default function PreviewPanel({
         event.data.type === 'select-block' &&
         typeof event.data.blockId === 'string'
       ) {
+        setSelectedElement(null);
+        setElementInstruction('');
+        setElementEditError(null);
+        onSelectBlock?.(event.data.blockId);
+        return;
+      }
+
+      if (
+        event.data &&
+        event.data.__crushable_preview &&
+        event.data.type === 'select-element' &&
+        typeof event.data.blockId === 'string' &&
+        typeof event.data.selector === 'string'
+      ) {
+        setSelectedElement({
+          blockId: event.data.blockId,
+          selector: event.data.selector,
+          tagName: typeof event.data.tagName === 'string' ? event.data.tagName : 'element',
+          textPreview: typeof event.data.textPreview === 'string' ? event.data.textPreview : '',
+        });
+        setElementInstruction('');
+        setElementEditError(null);
         onSelectBlock?.(event.data.blockId);
       }
     };
@@ -136,9 +190,11 @@ export default function PreviewPanel({
 
     const previewInteractionScript = `
       (function() {
+        var editMode = ${editMode ? 'true' : 'false'};
         var flashTimer = null;
         var hoveredBlock = null;
         var selectedBlock = null;
+        var selectedElement = null;
 
         function createOverlay(kind) {
           var overlay = document.createElement('div');
@@ -187,10 +243,12 @@ export default function PreviewPanel({
 
         var hoverOverlay = createOverlay('hover');
         var selectedOverlay = createOverlay('selected');
+        var elementOverlay = createOverlay('element-selected');
 
         function syncOverlays() {
           positionOverlay(hoverOverlay, hoveredBlock && hoveredBlock !== selectedBlock ? hoveredBlock : null);
           positionOverlay(selectedOverlay, selectedBlock);
+          positionOverlay(elementOverlay, selectedElement);
         }
 
         function setHovered(block) {
@@ -200,6 +258,7 @@ export default function PreviewPanel({
 
         function setSelected(block, shouldFlash) {
           selectedBlock = block;
+          selectedElement = null;
           if (hoveredBlock === block) hoveredBlock = null;
           syncOverlays();
 
@@ -212,6 +271,49 @@ export default function PreviewPanel({
               selectedOverlay.classList.remove('flash');
             }, 900);
           }
+        }
+
+        function buildElementSelector(element, block) {
+          if (!element || !block) return '';
+          if (element === block) return '__section_root__';
+
+          var parts = [];
+          var current = element;
+          while (current && current !== block && current.parentElement) {
+            var tagName = current.tagName.toLowerCase();
+            var siblings = Array.prototype.filter.call(current.parentElement.children, function(sibling) {
+              return sibling.tagName === current.tagName;
+            });
+            var index = siblings.indexOf(current) + 1;
+            parts.unshift(tagName + ':nth-of-type(' + index + ')');
+            current = current.parentElement;
+          }
+
+          return parts.join(' > ');
+        }
+
+        function getElementTextPreview(element) {
+          if (!element) return '';
+          if (element.tagName === 'IMG') {
+            return element.getAttribute('alt') || element.getAttribute('src') || 'image';
+          }
+
+          return (element.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+        }
+
+        function findEditableElement(target, block) {
+          var candidate = target && target.nodeType === 1 ? target : target && target.parentElement;
+          if (!candidate || !block) return null;
+          if (!block.contains(candidate)) return block;
+          if (candidate === document.body || candidate === document.documentElement) return block;
+          if (candidate.matches && candidate.matches('script, style')) return null;
+
+          return candidate.closest('button, a, h1, h2, h3, h4, h5, h6, p, span, img, li, div, section') || block;
+        }
+
+        function setSelectedElement(element) {
+          selectedElement = element;
+          syncOverlays();
         }
 
         document.addEventListener('mouseover', function(event) {
@@ -235,6 +337,26 @@ export default function PreviewPanel({
           event.preventDefault();
           event.stopPropagation();
 
+          if (editMode && (event.ctrlKey || event.metaKey)) {
+            var element = findEditableElement(event.target, block) || block;
+            var selector = buildElementSelector(element, block);
+
+            setSelected(block, false);
+            setSelectedElement(element);
+            window.parent.postMessage(
+              {
+                __crushable_preview: true,
+                type: 'select-element',
+                blockId: getBlockId(block),
+                selector: selector,
+                tagName: element.tagName.toLowerCase(),
+                textPreview: getElementTextPreview(element),
+              },
+              '*'
+            );
+            return;
+          }
+
           setSelected(block, true);
           window.parent.postMessage(
             {
@@ -252,6 +374,7 @@ export default function PreviewPanel({
 
           if (data.type === 'clear-selection') {
             selectedBlock = null;
+            selectedElement = null;
             syncOverlays();
             return;
           }
@@ -318,6 +441,11 @@ export default function PreviewPanel({
       background: rgba(139, 92, 246, 0.12);
       box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5), 0 18px 32px rgba(76, 29, 149, 0.2);
     }
+    .crushable-block-overlay.element-selected {
+      border: 2px solid rgba(59, 130, 246, 0.95);
+      background: rgba(59, 130, 246, 0.12);
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.46), 0 14px 28px rgba(37, 99, 235, 0.22);
+    }
     .crushable-block-badge {
       position: absolute;
       top: -14px;
@@ -358,7 +486,7 @@ ${blocks.length === 0 ? `
     <path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c1.955 0 3.832-.533 5.449-1.473M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.774 3.162 10.066 7.5a10.522 10.522 0 0 1-4.293 5.568M6.228 6.228 3 3m3.228 3.228 11.544 11.544" />
   </svg>
   <span>All sections are hidden in preview</span>
-  <span style="font-size:0.85rem;color:#64748b;">Use the Sections panel to show them again</span>
+  <span style="font-size:0.85rem;color:#64748b;">Turn section visibility back on from the builder to show them again</span>
 </div>
 ` : sectionsHtml}
 <script>
@@ -380,16 +508,32 @@ ${previewInteractionScript}
 ${'<'}/script>
 </body>
 </html>`;
-  }, [blocks.length, designStyle, visibleBlocks]);
+  }, [blocks.length, designStyle, editMode, visibleBlocks]);
 
   const previewDocKey = useMemo(
-    () => visibleBlocks.map((block) => `${block.id}:${block.visible !== false}:${block.html}`).join('|||'),
-    [visibleBlocks]
+    () => `${refreshKey}::${visibleBlocks.map((block) => `${block.id}:${block.visible !== false}:${block.html}`).join('|||')}`,
+    [refreshKey, visibleBlocks]
   );
 
   useEffect(() => {
     lastAppliedSelectionRef.current = null;
   }, [iframeLoadTick]);
+
+  useEffect(() => {
+    if (!editMode) {
+      setSelectedElement(null);
+      setElementInstruction('');
+      setElementEditError(null);
+    }
+  }, [editMode]);
+
+  useEffect(() => {
+    if (viewMode !== 'preview') {
+      setSelectedElement(null);
+      setElementInstruction('');
+      setElementEditError(null);
+    }
+  }, [viewMode]);
 
   useEffect(() => {
     if (viewMode !== 'preview' || iframeLoadTick === 0) return;
@@ -498,6 +642,23 @@ ${'<'}/script>
     setTimeout(() => setCodeCopied(false), 2000);
   }, [fullDocumentCode]);
 
+  const handleSubmitElementEdit = useCallback(async () => {
+    if (!selectedElement || !elementInstruction.trim() || !onElementEdit) return;
+
+    setIsApplyingElementEdit(true);
+    setElementEditError(null);
+
+    try {
+      await onElementEdit(selectedElement.blockId, selectedElement.selector, elementInstruction.trim());
+      setSelectedElement(null);
+      setElementInstruction('');
+    } catch (error) {
+      setElementEditError(error instanceof Error ? error.message : 'Element edit failed.');
+    } finally {
+      setIsApplyingElementEdit(false);
+    }
+  }, [elementInstruction, onElementEdit, selectedElement]);
+
   const formatTime = (ts: number) => {
     const d = new Date(ts);
     return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`;
@@ -509,13 +670,111 @@ ${'<'}/script>
       {viewMode === 'preview' ? (
         <div className={`preview-container ${mobilePreview ? 'mobile' : ''}`}>
           <div className={`preview-stage ${mobilePreview ? 'mobile' : 'desktop'}`}>
-            <div className="preview-stage-header">
-              <div>
-                <span className="preview-stage-eyebrow">{mobilePreview ? 'Mobile canvas' : 'Desktop canvas'}</span>
-                <strong>{visibleBlocks.length > 0 ? `${visibleBlocks.length} visible sections` : 'Awaiting content'}</strong>
+            <div className="preview-url-bar">
+              <div className="preview-url-shell">
+                <div className="preview-url-brand" aria-hidden="true">
+                  <span className="preview-window-dot red" />
+                  <span className="preview-window-dot amber" />
+                  <span className="preview-window-dot green" />
+                </div>
+                <div className="preview-url-display">
+                  <Globe size={14} />
+                  <span>{previewUrl}</span>
+                </div>
               </div>
-              <span className="preview-stage-pill">{mobilePreview ? '390px viewport' : 'Fluid viewport'}</span>
+              <div className="preview-url-actions">
+                <button
+                  type="button"
+                  className={`preview-url-btn ${editMode ? 'active' : ''}`}
+                  onClick={() => setEditMode((value) => !value)}
+                  title="Toggle element edit mode"
+                >
+                  <Sparkles size={14} />
+                  <span>{editMode ? 'Edit mode on' : 'Edit mode'}</span>
+                </button>
+                <button type="button" className="preview-url-btn" onClick={onRefresh} title="Refresh preview">
+                  <RefreshCw size={14} />
+                  <span>Refresh</span>
+                </button>
+                <div className="preview-responsive-toggle" role="group" aria-label="Preview viewport">
+                  <button
+                    type="button"
+                    className={`preview-url-btn ${!mobilePreview ? 'active' : ''}`}
+                    onClick={() => !mobilePreview && onToggleMobilePreview?.()}
+                    title="Desktop preview"
+                  >
+                    <Monitor size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    className={`preview-url-btn ${mobilePreview ? 'active' : ''}`}
+                    onClick={() => mobilePreview || onToggleMobilePreview?.()}
+                    title="Mobile preview"
+                  >
+                    <Smartphone size={14} />
+                  </button>
+                </div>
+              </div>
             </div>
+            {(editMode || selectedElement) && (
+              <div className="element-edit-panel">
+                <div className="element-edit-header">
+                  <div>
+                    <span className="preview-stage-eyebrow">Element edit</span>
+                    <strong>
+                      {selectedElement
+                        ? `${selectedElement.tagName} in ${selectedElement.blockId}`
+                        : 'Ctrl+Click an element in the preview'}
+                    </strong>
+                  </div>
+                  {selectedElement && (
+                    <button
+                      type="button"
+                      className="preview-url-btn"
+                      onClick={() => {
+                        setSelectedElement(null);
+                        setElementInstruction('');
+                        setElementEditError(null);
+                      }}
+                      title="Clear selected element"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+                {selectedElement ? (
+                  <>
+                    <p className="element-edit-meta">
+                      {selectedElement.textPreview || 'Selected element has no text preview.'}
+                    </p>
+                    <div className="element-edit-form">
+                      <textarea
+                        value={elementInstruction}
+                        onChange={(event) => setElementInstruction(event.target.value)}
+                        placeholder="Describe the change for this element only. Example: Make this button say Start Free Trial and give it a darker background."
+                        rows={3}
+                        disabled={isApplyingElementEdit}
+                      />
+                      <div className="element-edit-actions">
+                        <span className="element-edit-hint">Only the selected element will be replaced.</span>
+                        <button
+                          type="button"
+                          className="code-save-btn"
+                          onClick={handleSubmitElementEdit}
+                          disabled={isApplyingElementEdit || !elementInstruction.trim()}
+                        >
+                          <Save size={14} />
+                          {isApplyingElementEdit ? 'Applying...' : 'Apply edit'}
+                        </button>
+                      </div>
+                      {elementEditError && <div className="element-edit-error">{elementEditError}</div>}
+                    </div>
+                  </>
+                ) : (
+                  <p className="element-edit-meta">Turn on edit mode, then hold Ctrl and click any heading, button, paragraph, image, or container inside the iframe.</p>
+                )}
+              </div>
+            )}
             <div className={`preview-frame ${mobilePreview ? 'mobile' : ''}`}>
               {mobilePreview && (
                 <div className="preview-device-chrome" aria-hidden="true">

@@ -1,17 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { streamFromOpenRouter, parseSSEStream } from '@/lib/openrouter';
-import { getSystemPrompt, buildEditPrompt, buildNewPrompt, buildPlanPrompt, buildDetailedPlanPrompt } from '@/lib/prompt';
+import {
+    getSystemPrompt,
+    getElementEditSystemPrompt,
+    buildEditPrompt,
+    buildNewPrompt,
+    buildPlanPrompt,
+    buildDetailedPlanPrompt,
+    buildElementEditPrompt,
+    buildValidationPrompt,
+    buildStyleSelectPrompt,
+} from '@/lib/prompt';
 import { logger } from '@/lib/logger';
 
 
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
-        const { prompt, currentHtml, blockId, mode, apiKey, model, designStylePrompt, projectContext, planDetails } = body;
+        const { prompt, currentHtml, blockId, mode, apiKey, model, designStylePrompt, projectContext, planDetails, fullHtml } = body;
 
         logger.api('/api/generate', { mode, model, hasApiKey: !!apiKey, blockId: blockId || null, hasDesignStyle: !!designStylePrompt, hasProjectContext: !!projectContext });
 
-        if (!prompt && mode !== 'detailed-plan') {
+        if (!prompt && mode !== 'detailed-plan' && mode !== 'validate') {
             logger.error('/api/generate', 'Missing prompt');
             return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
         }
@@ -57,6 +67,18 @@ export async function POST(req: NextRequest) {
             systemPrompt = 'You are a landing page planner. Given a user request, return a JSON array of section names to build.';
             userPrompt = buildPlanPrompt(prompt);
             logger.info('Plan mode');
+        } else if (mode === 'style-select') {
+            systemPrompt = 'You select the most appropriate design style ID for a product description. Return only one valid style ID.';
+            userPrompt = buildStyleSelectPrompt(prompt);
+            logger.info('Style selection mode');
+        } else if (mode === 'validate') {
+            systemPrompt = 'You review landing page HTML and identify structural and UX issues. Return concise plain text findings.';
+            userPrompt = buildValidationPrompt(fullHtml || prompt || '');
+            logger.info('Validate mode');
+        } else if (mode === 'element-edit' && currentHtml && blockId) {
+            systemPrompt = getElementEditSystemPrompt(designStylePrompt || undefined, projectContext || undefined);
+            userPrompt = buildElementEditPrompt(currentHtml, prompt, blockId);
+            logger.info('Element edit mode', { blockId, currentHtmlLength: currentHtml.length });
         } else if (mode === 'edit' && currentHtml && blockId) {
             systemPrompt = getSystemPrompt(designStylePrompt || undefined, projectContext || undefined);
             userPrompt = buildEditPrompt(currentHtml, prompt, blockId);

@@ -51,6 +51,10 @@ SMOOTH SCROLL & SECTION IDS:
 - Every section MUST have a meaningful id attribute matching its purpose (e.g. id="hero", id="features", id="pricing", id="testimonials", id="contact", id="footer").
 - Navbar anchor links must match these IDs exactly so clicking a nav link scrolls to that section.
 
+SECTION BACKGROUNDS:
+- Every <section> MUST include an explicit background color or gradient via Tailwind classes (e.g. bg-white, bg-gray-900, bg-gradient-to-br).
+- NEVER leave a section without a background because sections can appear against different surrounding page colors.
+
 MOBILE NAVIGATION:
 - Mobile hamburger menus MUST use inline onclick handlers with plain JavaScript.
 - The toggle script must work without external dependencies.
@@ -92,6 +96,36 @@ export function buildNewPrompt(userRequest: string): string {
 ${userRequest}
 
 Create a complete new <section> with the described content. Include a meaningful data-block-id attribute. Return using the exact format with ---SUMMARY--- and ---HTML--- sections.`;
+}
+
+export function getElementEditSystemPrompt(designStylePrompt?: string, projectContext?: string): string {
+    const designInstruction = designStylePrompt
+        ? `\nDESIGN SYSTEM:\n${designStylePrompt}\nKeep the updated element consistent with this design system.\n`
+        : '';
+
+    const contextInstruction = projectContext
+        ? `\nPROJECT CONTEXT:\n${projectContext}\nUse it only when it directly helps the targeted element edit.\n`
+        : '';
+
+    return `You are editing a single HTML element inside a landing page section.
+
+OUTPUT RULES:
+- Return ONLY the updated HTML for the selected element.
+- Do NOT return markdown, explanations, code fences, or surrounding section HTML.
+- Preserve any attributes, classes, and nested structure that are not required to satisfy the request.
+- Keep the element compatible with Tailwind CSS utility classes.
+- Do not invent unrelated content or alter nearby elements.
+${designInstruction}${contextInstruction}`;
+}
+
+export function buildElementEditPrompt(elementHtml: string, userRequest: string, blockId: string): string {
+    return `CURRENT ELEMENT HTML (inside block "${blockId}"):
+${elementHtml}
+
+USER REQUEST:
+${userRequest}
+
+Return only the updated HTML for this exact element.`;
 }
 
 /**
@@ -159,6 +193,33 @@ IMPORTANT RULES:
 - Keep the numbered format exactly as shown — each section has a number and title on one line, then an indented description on the next line(s).
 - Always start with Navigation and Hero, always end with a Final CTA and Footer.
 - Return ONLY the plan text, no markdown code blocks, no extra commentary.`;
+}
+
+export function buildValidationPrompt(fullHtml: string): string {
+    return `Review the following landing page HTML and identify any issues with duplicate navbars, broken in-page anchor links, missing section backgrounds, missing/placeholder image sources, or missing smooth scrolling.
+
+Return concise bullet points describing the issues and suggested fixes. If no issues exist, return "No issues found.".
+
+HTML:
+${fullHtml}`;
+}
+
+export function buildStyleSelectPrompt(productDescription: string): string {
+    return `Choose the best design style ID for this product description.
+
+Available style IDs:
+- professional
+- playful
+- minimal
+- bold
+- elegant
+
+Rules:
+- Return ONLY one of the five style IDs.
+- Do not add punctuation, markdown, or explanation.
+
+Product description:
+${productDescription}`;
 }
 
 /**

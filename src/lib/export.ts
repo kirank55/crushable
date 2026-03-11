@@ -18,6 +18,7 @@ export function generateFullHTML(blocks: Block[], projectName?: string): string 
   <script src="https://unpkg.com/lucide@latest"><\/script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <style>
+    html { scroll-behavior: smooth; }
     body { font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; }
   </style>
 </head>

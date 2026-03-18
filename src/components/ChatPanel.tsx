@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Block,
   ComponentManifestItem,
@@ -26,8 +26,6 @@ import {
 import {
   Send,
   Loader2,
-  Sparkles,
-  Lightbulb,
   ChevronDown,
   ChevronRight,
   Code,
@@ -43,9 +41,6 @@ import {
   Save,
   X,
   Plus,
-  Layout,
-  Grid3x3,
-  DollarSign,
   Cpu,
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
@@ -280,7 +275,8 @@ function shouldShowRestoreButton(
 
   if (
     message.content === "Proceed with landing page plan" ||
-    message.content === "User clicked on Generate Landing Page"
+    message.content === "User clicked on Generate Landing Page" ||
+    message.content === "Continue"
   ) {
     return false;
   }
@@ -365,6 +361,7 @@ function buildPreviousChangeExplanation(messages: Message[]): string | null {
           message.role === "user" &&
           message.content !== "Proceed with landing page plan" &&
           message.content !== "User clicked on Generate Landing Page" &&
+          message.content !== "Continue" &&
           !isExplanationIntent(message.content),
       );
 
@@ -422,7 +419,6 @@ export default function ChatPanel({
   );
   const [setupDetails, setSetupDetails] = useState<ProjectDetails>({});
   const [triedToProceed, setTriedToProceed] = useState(false);
-  const [showSuggestions, setShowSuggestions] = useState(true);
   const [isAutoSelectingStyle, setIsAutoSelectingStyle] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastPersistedMessageIdsRef = useRef("");
@@ -433,69 +429,6 @@ export default function ChatPanel({
 
   const selectedBlock = blocks.find((b) => b.id === selectedBlockId);
   const selectedStyle = DESIGN_STYLES.find((style) => style.id === designStyle);
-  const promptSuggestions = useMemo(() => {
-    if (selectedBlock) {
-      return [
-        {
-          icon: <Pencil size={14} />,
-          label: "Refresh the selected section",
-          prompt: `Refine "${selectedBlock.label}" with stronger hierarchy, better spacing, and a clearer CTA.`,
-        },
-        {
-          icon: <Sparkles size={14} />,
-          label: "Make it feel more premium",
-          prompt: `Make "${selectedBlock.label}" feel more premium with richer visuals, elevated typography, and refined accents.`,
-        },
-        {
-          icon: <Link2 size={14} />,
-          label: "Connect it to the rest of the page",
-          prompt: `Update "${selectedBlock.label}" so it feels more connected to the rest of the page design and messaging.`,
-        },
-      ];
-    }
-
-    if (blocks.length === 0) {
-      return [
-        {
-          icon: <Layout size={14} />,
-          label: "Hero section",
-          prompt:
-            "Create a modern hero section with a gradient background, headline, subtext, and CTA button",
-        },
-        {
-          icon: <Grid3x3 size={14} />,
-          label: "Features grid",
-          prompt:
-            "Create a features grid with 3 cards, each with an icon, title, and description",
-        },
-        {
-          icon: <DollarSign size={14} />,
-          label: "Pricing table",
-          prompt:
-            "Create a pricing section with 3 tiers: Basic, Pro, and Enterprise",
-        },
-      ];
-    }
-
-    return [
-      {
-        icon: <Plus size={14} />,
-        label: "Add social proof",
-        prompt: "Add a social proof section with customer logos, metrics, and a short testimonial.",
-      },
-      {
-        icon: <ClipboardList size={14} />,
-        label: "Plan the whole page",
-        prompt: "Create a full landing page with navigation, hero, features, proof, pricing, FAQ, and CTA.",
-      },
-      {
-        icon: <RefreshCw size={14} />,
-        label: "Polish the overall design",
-        prompt: "Improve the page design with stronger hierarchy, more breathing room, and cleaner section transitions.",
-      },
-    ];
-  }, [blocks.length, selectedBlock]);
-
   useEffect(() => {
     setMessages(initialMessages || []);
     setExpandedMessages(new Set());
@@ -505,7 +438,6 @@ export default function ChatPanel({
     lastPersistedMessageSignatureRef.current = "";
     setSetupPhase(designStyle ? "ready" : "details");
     setSetupDetails({});
-    setShowSuggestions(true);
   }, [resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load initial messages when they change (e.g. project switch)
@@ -982,8 +914,172 @@ export default function ChatPanel({
     return nextBlocks;
   }, [critiqueSection, generateSection, onUpdateBlock, summarizeValidationIssues]);
 
+  async function generateLandingPageFromDetails(resolvedStyleId?: string) {
+    if (isLoading) return;
+
+    const userMessage: Message = {
+      id: uuidv4(),
+      role: "user",
+      content: "Continue",
+      blocksSnapshot: blocks.map((block) => ({ ...block })),
+      timestamp: Date.now(),
+    };
+
+    const assistantMessageId = uuidv4();
+    const assistantPlaceholder: Message = {
+      id: assistantMessageId,
+      role: "assistant",
+      content: "",
+      timestamp: Date.now(),
+    };
+
+    setMessages((prev) => [...prev, userMessage, assistantPlaceholder]);
+    setIsLoading(true);
+    setLoadingStatus({ phase: "planning" });
+    abortControllerRef.current = new AbortController();
+
+    try {
+      const apiKey = getApiKey();
+      const model = getModel();
+      const style = DESIGN_STYLES.find((item) => item.id === resolvedStyleId);
+
+      const response = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: abortControllerRef.current?.signal,
+        body: JSON.stringify({
+          mode: "detailed-plan",
+          apiKey,
+          model,
+          planDetails: {
+            brandName: setupDetails.brandName?.trim() || "Your brand",
+            productDescription:
+              setupDetails.productDescription?.trim() || "A product",
+            designStyleLabel: style?.label || "Professional",
+            heroTitle:
+              setupDetails.title?.trim() ||
+              "A strong value-focused hero headline",
+            subtitle:
+              setupDetails.subtitle?.trim() ||
+              "A concise supporting message that explains the offer and why it matters.",
+            ctaText: setupDetails.ctaText?.trim() || "Get Started",
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to generate plan");
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No response stream");
+
+      const decoder = new TextDecoder();
+      let planContent = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        planContent += decoder.decode(value, { stream: true });
+      }
+
+      planContent = planContent
+        .replace(/^```[\w]*\n?/gm, "")
+        .replace(/^```$/gm, "")
+        .trim();
+
+      const planMessageId = uuidv4();
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === assistantMessageId
+            ? {
+                ...message,
+                id: planMessageId,
+                summary: "Detailed landing page plan ready",
+                plan: planContent,
+              }
+            : message,
+        ),
+      );
+      setUsedPlanIds((prev) => {
+        const next = new Set(prev);
+        next.add(planMessageId);
+        return next;
+      });
+
+      const plannedSections = extractDetailedPlanSections(planContent);
+      if (plannedSections.length === 0) {
+        throw new Error("Detailed plan did not contain recognizable sections.");
+      }
+
+      const buildMessageId = uuidv4();
+      const buildMessage: Message = {
+        id: buildMessageId,
+        role: "assistant",
+        content: "",
+        timestamp: Date.now(),
+      };
+      setMessages((prev) => [...prev, buildMessage]);
+
+      const results = await executeSectionPlan(
+        plannedSections,
+        "Building your page with parallel generation and structured fallbacks...",
+      );
+      const summaries = results
+        .map((result, index) => `${index + 1}. ${result.summary}`)
+        .join("\n");
+
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === buildMessageId
+            ? {
+                ...message,
+                content: `Built ${results.length} sections`,
+                summary: `Generated ${results.length} sections from the saved plan:\n${summaries}`,
+              }
+            : message,
+        ),
+      );
+      onVersionCreated("Continue");
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        logger.action("Landing page generation cancelled by user");
+        setMessages((prev) =>
+          prev.map((message) =>
+            message.id === assistantMessageId
+              ? {
+                  ...message,
+                  content: "",
+                  summary: "Landing page generation cancelled",
+                }
+              : message,
+          ),
+        );
+      } else {
+        const errorMsg =
+          error instanceof Error ? error.message : "Something went wrong";
+        logger.error("ChatPanel", error);
+        setMessages((prev) =>
+          prev.map((message) =>
+            message.id === assistantMessageId
+              ? {
+                  ...message,
+                  content: `Error: ${errorMsg}`,
+                  summary: `Error generating landing page: ${errorMsg}`,
+                }
+              : message,
+          ),
+        );
+      }
+    } finally {
+      setIsLoading(false);
+      setLoadingStatus({ phase: "idle" });
+      abortControllerRef.current = null;
+    }
+  }
+
   const handleSetupComplete = useCallback(async () => {
-    const productDescription = (setupDetails.productDescription || '').trim();
+    const productDescription = (setupDetails.productDescription || "").trim();
     if (productDescription.length < 50) return;
 
     try {
@@ -992,26 +1088,37 @@ export default function ChatPanel({
       let resolvedStyle = designStyle;
       if (!resolvedStyle) {
         resolvedStyle = await requestStyleSelection(productDescription);
-        const selectedStyle = DESIGN_STYLES.find((style) => style.id === resolvedStyle);
-        logger.info('Design style selected', {
+        const selectedStyle = DESIGN_STYLES.find(
+          (style) => style.id === resolvedStyle,
+        );
+        logger.info("Design style selected", {
           styleId: resolvedStyle,
           styleLabel: selectedStyle?.label ?? resolvedStyle,
-          source: 'auto',
+          source: "auto",
         });
         onSetDesignStyle(resolvedStyle);
       }
 
       onSetProjectDetails(setupDetails);
-      setSetupPhase('ready');
+      setSetupPhase("ready");
+      await generateLandingPageFromDetails(resolvedStyle);
     } catch (error) {
-      logger.error('Style selection', error);
-      onSetDesignStyle('professional');
+      logger.error("Style selection", error);
+      onSetDesignStyle("professional");
       onSetProjectDetails(setupDetails);
-      setSetupPhase('ready');
+      setSetupPhase("ready");
+      await generateLandingPageFromDetails("professional");
     } finally {
       setIsAutoSelectingStyle(false);
     }
-  }, [designStyle, onSetDesignStyle, onSetProjectDetails, requestStyleSelection, setupDetails]);
+  }, [
+    designStyle,
+    generateLandingPageFromDetails,
+    onSetDesignStyle,
+    onSetProjectDetails,
+    requestStyleSelection,
+    setupDetails,
+  ]);
 
   const executeSectionPlan = useCallback(
     async (sections: PlannedSection[], implementationSummary: string) => {
@@ -1028,9 +1135,12 @@ export default function ChatPanel({
         timestamp: Date.now(),
       };
       const trackerId = uuidv4();
-      const progressStates = sectionBlueprint.map((section) => ({
+      const progressStates: Array<{
+        title: string;
+        status: "pending" | "running" | "done";
+      }> = sectionBlueprint.map((section) => ({
         title: section.title,
-        status: "pending" as const,
+        status: "pending",
       }));
 
       setMessages((prev) => [
@@ -1564,115 +1674,6 @@ export default function ChatPanel({
     setShowSelectDropdown(false);
   };
 
-  const handleGenerateLandingPageClick = async () => {
-    if (isLoading) return;
-
-    const userMessage: Message = {
-      id: uuidv4(),
-      role: "user",
-      content: "User clicked on Generate Landing Page",
-      blocksSnapshot: blocks.map((block) => ({ ...block })),
-      timestamp: Date.now(),
-    };
-
-    // Add a placeholder assistant message so the loading spinner appears immediately
-    const assistantMessageId = uuidv4();
-    const assistantPlaceholder: Message = {
-      id: assistantMessageId,
-      role: "assistant",
-      content: "",
-      timestamp: Date.now(),
-    };
-
-    setMessages((prev) => [...prev, userMessage, assistantPlaceholder]);
-    setIsLoading(true);
-    setLoadingStatus({ phase: "planning" });
-    abortControllerRef.current = new AbortController();
-
-    try {
-      const apiKey = getApiKey();
-      const model = getModel();
-      let resolvedStyleId = designStyle;
-      if (!resolvedStyleId && (setupDetails.productDescription || '').trim().length >= 50) {
-        resolvedStyleId = await requestStyleSelection((setupDetails.productDescription || '').trim());
-        onSetDesignStyle(resolvedStyleId);
-      }
-      const style = DESIGN_STYLES.find((item) => item.id === resolvedStyleId);
-
-      const response = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: abortControllerRef.current?.signal,
-        body: JSON.stringify({
-          mode: "detailed-plan",
-          apiKey,
-          model,
-          planDetails: {
-            brandName: setupDetails.brandName?.trim() || "Your brand",
-            productDescription: setupDetails.productDescription?.trim() || "A product",
-            designStyleLabel: style?.label || "Professional",
-            heroTitle: setupDetails.title?.trim() || "A strong value-focused hero headline",
-            subtitle: setupDetails.subtitle?.trim() || "A concise supporting message that explains the offer and why it matters.",
-            ctaText: setupDetails.ctaText?.trim() || "Get Started",
-          },
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to generate plan");
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error("No response stream");
-
-      const decoder = new TextDecoder();
-      let planContent = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        planContent += decoder.decode(value, { stream: true });
-      }
-
-      // Strip any markdown code fences the LLM might have added
-      planContent = planContent.replace(/^```[\w]*\n?/gm, "").replace(/^```$/gm, "").trim();
-
-      // Replace the placeholder with the finished plan message
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantMessageId
-            ? { ...m, summary: "Detailed landing page plan ready", plan: planContent }
-            : m,
-        ),
-      );
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        logger.action("Plan generation cancelled by user");
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantMessageId
-              ? { ...m, summary: "Plan generation cancelled" }
-              : m,
-          ),
-        );
-      } else {
-        const errorMsg = error instanceof Error ? error.message : "Something went wrong";
-        logger.error("ChatPanel", error);
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantMessageId
-              ? { ...m, summary: `Error generating plan: ${errorMsg}` }
-              : m,
-          ),
-        );
-      }
-    } finally {
-      setIsLoading(false);
-      setLoadingStatus({ phase: "idle" });
-      abortControllerRef.current = null;
-    }
-  };
-
   const handlePlanEditStart = (message: Message) => {
     setEditingPlanId(message.id);
     setPlanDraft(message.plan || "");
@@ -1691,94 +1692,6 @@ export default function ChatPanel({
     );
     setEditingPlanId(null);
     setPlanDraft("");
-  };
-
-  const handlePlanProceed = async (message: Message) => {
-    if (!message.plan || isLoading) return;
-
-    setUsedPlanIds((prev) => new Set(prev).add(message.id));
-
-    const plannedSections = extractDetailedPlanSections(message.plan);
-    if (plannedSections.length === 0) {
-      handleSubmit(message.plan, "Proceed with landing page plan");
-      return;
-    }
-
-    const userMessage: Message = {
-      id: uuidv4(),
-      role: "user",
-      content: "Proceed with landing page plan",
-      blocksSnapshot: blocks.map((block) => ({ ...block })),
-      timestamp: Date.now(),
-    };
-    setMessages((prev) => [...prev, userMessage]);
-    setIsLoading(true);
-    abortControllerRef.current = new AbortController();
-
-    const assistantMessage: Message = {
-      id: uuidv4(),
-      role: "assistant",
-      content: "",
-      timestamp: Date.now(),
-    };
-    setMessages((prev) => [...prev, assistantMessage]);
-
-    try {
-          const results = await executeSectionPlan(
-        plannedSections,
-        `Building your page with parallel generation and structured fallbacks...`,
-      );
-      const summaries = results
-        .map((result, index) => `${index + 1}. ${result.summary}`)
-        .join("\n");
-
-      setMessages((prev) =>
-        prev.map((currentMessage) =>
-          currentMessage.id === assistantMessage.id
-            ? {
-              ...currentMessage,
-              content: `Built ${results.length} sections`,
-              summary: `Generated ${results.length} sections from the saved plan:\n${summaries}`,
-            }
-            : currentMessage,
-        ),
-      );
-      onVersionCreated("Proceed with landing page plan");
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        logger.action("Request cancelled by user");
-        setMessages((prev) =>
-          prev.map((currentMessage) =>
-            currentMessage.id === assistantMessage.id
-              ? {
-                ...currentMessage,
-                content: "",
-                summary: "Request cancelled",
-              }
-              : currentMessage,
-          ),
-        );
-      } else {
-        const errorMsg =
-          error instanceof Error ? error.message : "Something went wrong";
-        logger.error("ChatPanel", error);
-        setMessages((prev) =>
-          prev.map((currentMessage) =>
-            currentMessage.id === assistantMessage.id
-              ? {
-                ...currentMessage,
-                content: `Error: ${errorMsg}`,
-                summary: `Error: ${errorMsg}`,
-              }
-              : currentMessage,
-          ),
-        );
-      }
-    } finally {
-      setIsLoading(false);
-      setLoadingStatus({ phase: "idle" });
-      abortControllerRef.current = null;
-    }
   };
 
   const renderLoadingStatus = () => {
@@ -1851,7 +1764,6 @@ export default function ChatPanel({
           <div className="chat-empty setup-form">
             <div className="setup-progress" aria-label="Builder setup progress">
               <span className="setup-progress-step active">1. Details</span>
-              <span className="setup-progress-step">2. Build</span>
             </div>
             <h3>
               Project Details
@@ -1969,7 +1881,7 @@ export default function ChatPanel({
                 className="setup-continue-btn"
                 disabled={!canContinue || isAutoSelectingStyle}
               >
-                {isAutoSelectingStyle ? 'Choosing style…' : 'Start Building →'}
+                {isAutoSelectingStyle ? "Choosing style..." : "Continue"}
               </button>
             </div>
           </div>
@@ -1985,50 +1897,13 @@ export default function ChatPanel({
       <div className="chat-messages">
         {messages.length === 0 && (
           <div className="chat-empty">
-            <div className="setup-progress compact" aria-label="Builder setup progress">
-              <span className="setup-progress-step complete">1. Details</span>
-              <span className="setup-progress-step active">2. Build</span>
-            </div>
             <h3>Welcome to Crushable</h3>
-            <p>Start with a full-page brief or drop into section mode. The builder will stream sections into the live preview as you go.</p>
+            <p>Describe what you want to build and Crushable will stream sections into the live preview as you go.</p>
             {designStyle && (
               <div className="design-style-badge">
                 {selectedStyle?.label} style
               </div>
             )}
-
-            {/* Generate Landing Page button */}
-            <button
-              onClick={handleGenerateLandingPageClick}
-              className="generate-landing-btn"
-              disabled={isLoading}
-            >
-              <Zap size={18} />
-              Generate Landing Page
-            </button>
-
-            <div className="suggestions-header">
-              <span>Suggestions</span>
-              <button
-                type="button"
-                className={`suggestions-toggle ${showSuggestions ? 'active' : ''}`}
-                onClick={() => setShowSuggestions((value) => !value)}
-              >
-                <Lightbulb size={14} />
-                {showSuggestions ? 'Hide' : 'Show'}
-              </button>
-            </div>
-
-            <div className={`chat-suggestions ${showSuggestions ? 'expanded' : 'collapsed'}`}>
-              {showSuggestions && promptSuggestions.map((suggestion) => (
-                <button
-                  key={suggestion.label}
-                  onClick={() => setInput(suggestion.prompt)}
-                >
-                  {suggestion.icon} {suggestion.label}
-                </button>
-              ))}
-            </div>
           </div>
         )}
 
@@ -2131,14 +2006,6 @@ export default function ChatPanel({
                           </div>
                         ) : (
                           <div className="assistant-plan-actions">
-                            <button
-                              onClick={() => handlePlanProceed(message)}
-                              className="assistant-plan-btn"
-                              disabled={isLoading}
-                            >
-                              <Send size={14} />
-                              Proceed
-                            </button>
                             <button
                               onClick={() => handlePlanEditStart(message)}
                               className="assistant-plan-btn"
@@ -2350,33 +2217,6 @@ export default function ChatPanel({
             </button>
           </div>
         </div>
-        <div className="suggestions-header compact">
-          <span>Quick prompts</span>
-          <button
-            type="button"
-            className={`suggestions-toggle ${showSuggestions ? 'active' : ''}`}
-            onClick={() => setShowSuggestions((value) => !value)}
-          >
-            <Lightbulb size={14} />
-            {showSuggestions ? 'Hide' : 'Show'}
-          </button>
-        </div>
-        {showSuggestions && (
-          <div className="prompt-chip-row">
-            {promptSuggestions.map((suggestion) => (
-              <button
-                key={`input-${suggestion.label}`}
-                type="button"
-                className="prompt-chip"
-                onClick={() => setInput(suggestion.prompt)}
-                disabled={isLoading}
-              >
-                {suggestion.icon}
-                <span>{suggestion.label}</span>
-              </button>
-            ))}
-          </div>
-        )}
         <div className="input-shortcuts-hint">
           Enter sends, Shift+Enter adds a new line, Ctrl/Cmd+S saves, Ctrl/Cmd+Z undoes, Esc clears selection.
         </div>

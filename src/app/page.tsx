@@ -1,51 +1,25 @@
 'use client';
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Project } from '@/types';
-import { getProjects, deleteProject } from '@/lib/storage';
-import { formatRelativeDate } from '@/lib/date';
-import {
-  Plus,
-  Trash2,
-  Clock,
-  Settings,
-  LayoutTemplate,
-  ArrowRight,
-  Layers3,
-} from 'lucide-react';
+import { Plus, Trash2, Clock, Settings, ArrowRight, Layers3, Sparkles, MessageSquareText, Code2 } from 'lucide-react';
 import SettingsModal from '@/components/SettingsModal';
-import { TEMPLATE_LIBRARY } from '@/lib/templates';
+import { formatRelativeDate } from '@/lib/date';
+import { getProjects, deleteProject } from '@/lib/storage';
+import { Project } from '@/types';
 
 export default function HomePage() {
   const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
-  const [mounted, setMounted] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       setProjects(getProjects());
-      setMounted(true);
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
   }, []);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [activeTemplateCategory, setActiveTemplateCategory] = useState('All');
-
-  const templateCategories = useMemo(
-    () => ['All', ...new Set(TEMPLATE_LIBRARY.map((template) => template.category))],
-    []
-  );
-
-  const filteredTemplates = useMemo(
-    () =>
-      activeTemplateCategory === 'All'
-        ? TEMPLATE_LIBRARY
-        : TEMPLATE_LIBRARY.filter((template) => template.category === activeTemplateCategory),
-    [activeTemplateCategory]
-  );
-  const firstTemplate = filteredTemplates[0] || TEMPLATE_LIBRARY[0];
 
   const handleDelete = useCallback((id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -68,112 +42,72 @@ export default function HomePage() {
 
         <div className="project-hero">
           <div className="project-hero-copy">
-            <span className="project-hero-eyebrow">Plan, generate, refine, export</span>
-            <h2>Go from product brief to a branded HTML project without leaving the builder.</h2>
+            <span className="project-hero-eyebrow">AI project builder</span>
+            <h2>Build a polished multi-page project from a single product brief.</h2>
             <p>
-              Start from a blank idea or pick a launch-ready template. Crushable guides the first run,
-              builds sections in chat, and keeps preview, code, and version history in sync.
+              Describe what you are building, generate a page plan, refine sections in chat, and
+              export clean HTML when it is ready.
             </p>
-            <div className="project-hero-metrics">
-              <div className="project-hero-metric">
-                <strong>{TEMPLATE_LIBRARY.length}</strong>
-                <span>starter templates</span>
+            <button
+              onClick={() => router.push('/project/new')}
+              className="new-project-big-btn"
+            >
+              <Plus size={20} />
+              <span>Start New Project</span>
+              <ArrowRight size={18} />
+            </button>
+          </div>
+
+          <div className="project-hero-visual" aria-hidden="true">
+            <div className="hero-visual-frame">
+              <div className="hero-visual-topbar">
+                <span />
+                <span />
+                <span />
               </div>
-              <div className="project-hero-metric">
-                <strong>{mounted ? projects.length : '—'}</strong>
-                <span>recent local projects</span>
-              </div>
-              <div className="project-hero-metric">
-                <strong>HTML</strong>
-                <span>export with zero lock-in</span>
-              </div>
-            </div>
-          </div>
 
-          <div className="project-fullscreen-actions">
-            <div className="hero-action-card">
-              <span className="hero-action-label">Start fresh</span>
-              <button
-                onClick={() => router.push('/project/new')}
-                className="new-project-big-btn"
-              >
-                <Plus size={20} />
-                <span>Blank Project</span>
-                <ArrowRight size={18} />
-              </button>
-              <p>Best when you want Crushable to plan the full structure from your description.</p>
-            </div>
-
-            <div className="hero-action-card secondary">
-              <span className="hero-action-label">Use a template</span>
-              <button
-                onClick={() => {
-                  if (!firstTemplate) return;
-                  router.push(`/project/new?template=${firstTemplate.id}`);
-                }}
-                className="template-starter-btn"
-                disabled={!firstTemplate}
-              >
-                <LayoutTemplate size={18} />
-                <span>Start from {firstTemplate?.name || 'a template'}</span>
-              </button>
-              <p>Choose a use-case below, then customize sections, copy, and layout with chat.</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="template-showcase">
-          <div className="template-showcase-header">
-            <div>
-              <p className="template-showcase-eyebrow">Start from something close</p>
-              <h2>Pick a built-in template</h2>
-            </div>
-            <div className="template-showcase-note">
-              <LayoutTemplate size={14} />
-              Static HTML starter pages you can edit with chat, preview, and code.
-            </div>
-          </div>
-
-          <div className="template-filter-row" aria-label="Template filters">
-            {templateCategories.map((category) => (
-              <button
-                key={category}
-                type="button"
-                onClick={() => setActiveTemplateCategory(category)}
-                className={`template-filter-chip ${activeTemplateCategory === category ? 'active' : ''}`}
-              >
-                {category}
-              </button>
-            ))}
-          </div>
-
-          <div className="template-grid">
-            {filteredTemplates.map((template) => (
-              <button
-                key={template.id}
-                onClick={() => router.push(`/project/new?template=${template.id}`)}
-                className="template-card"
-              >
-                <div
-                  className={`template-card-preview ${template.designStyle}`}
-                >
-                  <span>{template.preview.eyebrow}</span>
-                  <strong>{template.name}</strong>
-                  <p>{template.preview.title}</p>
+              <div className="hero-visual-canvas">
+                <div className="hero-visual-sidebar">
+                  <span className="hero-visual-pill wide" />
+                  <span className="hero-visual-pill" />
+                  <span className="hero-visual-pill" />
                 </div>
-                <div className="template-card-body">
-                  <div className="template-card-topline">
-                    <span className="template-card-category">{template.category}</span>
-                    <span className="template-card-style">{template.designStyle}</span>
+
+                <div className="hero-visual-page">
+                  <div className="hero-visual-page-header">
+                    <div className="hero-visual-badge">
+                      <Sparkles size={14} />
+                      <span>AI build flow</span>
+                    </div>
+                    <span className="hero-visual-title" />
+                    <span className="hero-visual-copy" />
+                    <span className="hero-visual-copy short" />
                   </div>
-                  <p>{template.description}</p>
-                  <span className="template-card-cta">
-                    Open template
-                    <ArrowRight size={14} />
-                  </span>
+
+                  <div className="hero-visual-grid">
+                    <div className="hero-visual-card tall">
+                      <div className="hero-visual-card-icon">
+                        <MessageSquareText size={18} />
+                      </div>
+                      <strong>Describe your project</strong>
+                      <span>Turn a rough brief into a structured plan.</span>
+                    </div>
+                    <div className="hero-visual-card">
+                      <div className="hero-visual-card-icon">
+                        <Layers3 size={18} />
+                      </div>
+                      <strong>Generate sections</strong>
+                    </div>
+                    <div className="hero-visual-card wide">
+                      <div className="hero-visual-card-icon">
+                        <Code2 size={18} />
+                      </div>
+                      <strong>Refine and export HTML</strong>
+                    </div>
+                  </div>
                 </div>
-              </button>
-            ))}
+              </div>
+            </div>
           </div>
         </div>
 

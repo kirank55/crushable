@@ -533,16 +533,6 @@ export default function ChatPanel({
     });
   };
 
-  const handleDesignStyleSelect = (styleId: string) => {
-    const selectedStyle = DESIGN_STYLES.find((style) => style.id === styleId);
-    logger.info('Design style selected', {
-      styleId,
-      styleLabel: selectedStyle?.label ?? styleId,
-      source: 'manual',
-    });
-    onSetDesignStyle(styleId);
-  };
-
   const requestStyleSelection = useCallback(async (productDescription: string): Promise<string> => {
     const response = await fetch('/api/generate', {
       method: 'POST',
@@ -1770,25 +1760,6 @@ export default function ChatPanel({
             </h3>
             <p>Provide the essentials so Crushable can plan stronger sections and keep the first draft aligned with your product.</p>
             <div className="setup-fields">
-              <div className="setup-field">
-                <label>Design Style <span className="optional-tag">optional</span></label>
-                <select
-                  value={designStyle || ''}
-                  onChange={(e) => handleDesignStyleSelect(e.target.value)}
-                >
-                  <option value="">Auto-select from product description</option>
-                  {DESIGN_STYLES.map((style) => (
-                    <option key={style.id} value={style.id}>
-                      {style.label}
-                    </option>
-                  ))}
-                </select>
-                  <span className="setup-field-hint">
-                    {selectedStyle
-                      ? `${selectedStyle.label} will guide generation.`
-                      : 'Leave this on auto and Crushable will choose the best fit from your description.'}
-                  </span>
-              </div>
               <div className="setup-field">
                 <label>Brand / Company Name  <span className="optional-tag">optional</span></label>
                 <input

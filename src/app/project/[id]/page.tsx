@@ -326,7 +326,7 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
                         refreshKey={refreshKey}
                         onSelectBlock={handlePreviewSelect}
                         onRefresh={() => setRefreshKey((value) => value + 1)}
-                        onToggleMobilePreview={() => setMobilePreview((value) => !value)}
+                        onPreviewModeChange={setMobilePreview}
                         onElementEdit={handleElementEdit}
                         onCodeSave={(editedHtml) => {
                             // Parse the edited HTML back into individual section blocks

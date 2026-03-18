@@ -20,7 +20,7 @@ interface PreviewPanelProps {
   refreshKey: number;
   onSelectBlock?: (blockId: string) => void;
   onRefresh?: () => void;
-  onToggleMobilePreview?: () => void;
+  onPreviewModeChange?: (mobile: boolean) => void;
   onElementEdit?: (blockId: string, elementSelector: string, instruction: string) => Promise<void> | void;
   onCodeSave?: (sectionsHtml: string) => void;
 }
@@ -51,7 +51,7 @@ export default function PreviewPanel({
   refreshKey,
   onSelectBlock,
   onRefresh,
-  onToggleMobilePreview,
+  onPreviewModeChange,
   onElementEdit,
   onCodeSave,
 }: PreviewPanelProps) {
@@ -688,7 +688,7 @@ ${'<'}/script>
                   <button
                     type="button"
                     className={`preview-url-btn ${!mobilePreview ? 'active' : ''}`}
-                    onClick={() => !mobilePreview && onToggleMobilePreview?.()}
+                    onClick={() => onPreviewModeChange?.(false)}
                     title="Desktop preview"
                   >
                     <Monitor size={14} />
@@ -696,7 +696,7 @@ ${'<'}/script>
                   <button
                     type="button"
                     className={`preview-url-btn ${mobilePreview ? 'active' : ''}`}
-                    onClick={() => mobilePreview || onToggleMobilePreview?.()}
+                    onClick={() => onPreviewModeChange?.(true)}
                     title="Mobile preview"
                   >
                     <Smartphone size={14} />

@@ -224,7 +224,6 @@ export default function Toolbar({
 
         <div className="toolbar-divider" />
         <div className="project-identity">
-          <span className="project-eyebrow">Current project</span>
           {isEditing ? (
             <input
               value={editName}
@@ -314,23 +313,24 @@ export default function Toolbar({
           {onOpenInNewTab && (
             <button
               onClick={onOpenInNewTab}
-              className="header-action-btn"
+              className="toolbar-btn"
               title="Open Preview in New Tab"
             >
               <ExternalLink size={16} />
+              <span className="btn-label">Preview in new tab</span>
             </button>
           )}
 
-          <button
+          {/* <button
             onClick={onNewProject}
             className="toolbar-btn"
             title="New Project"
           >
             <Plus size={18} />
             <span className="btn-label">New</span>
-          </button>
+          </button> */}
 
-          <button
+          {/* <button
             onClick={handleClearAll}
             className="toolbar-btn"
             title="Clear All"
@@ -338,7 +338,7 @@ export default function Toolbar({
           >
             <Trash2 size={18} />
             <span className="btn-label">Clear</span>
-          </button>
+          </button> */}
 
           <input
             ref={fileInputRef}

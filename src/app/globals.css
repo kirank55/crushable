@@ -235,9 +235,8 @@ h3,
 
 .project-identity {
   display: flex;
-  flex-direction: column;
   min-width: 0;
-  gap: 2px;
+  gap: 1em;
 }
 
 .project-eyebrow {
@@ -1554,7 +1553,7 @@ h3,
   display: flex;
   justify-content: center;
   align-items: stretch;
-  padding: 18px;
+  padding: 3px;
   background: #121212;
   transition: all 0.3s ease;
 }
@@ -1566,7 +1565,7 @@ h3,
 .preview-stage {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 3px;
   width: 100%;
 }
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { Version } from '@/types';
-import { X, Clock, History, RotateCcw, Sparkles } from 'lucide-react';
+import { X, Clock, History, RotateCcw } from 'lucide-react';
 import { formatRelativeDate } from '@/lib/date';
 
 interface VersionsPanelProps {
@@ -41,7 +41,6 @@ export default function VersionsPanel({
                 <div className="versions-list">
                     {versions.length === 0 ? (
                         <div className="no-versions">
-                            <Sparkles size={26} strokeWidth={1.5} />
                             <p>No versions yet</p>
                             <p className="hint">Generate or edit a section and Crushable will snapshot the page automatically.</p>
                         </div>

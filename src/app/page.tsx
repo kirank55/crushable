@@ -6,7 +6,6 @@ import { Project } from '@/types';
 import { getProjects, deleteProject } from '@/lib/storage';
 import { formatRelativeDate } from '@/lib/date';
 import {
-  Sparkles,
   Plus,
   Trash2,
   Clock,
@@ -61,7 +60,7 @@ export default function HomePage() {
       <div className="project-fullscreen-inner">
         <div className="project-fullscreen-header">
           <div className="project-fullscreen-brand">
-            <Sparkles size={28} strokeWidth={1.5} />
+            <Layers3 size={28} strokeWidth={1.5} />
             <h1>Crushable</h1>
           </div>
           <p className="project-fullscreen-sub">AI page builder for polished multi-page projects</p>
@@ -156,8 +155,7 @@ export default function HomePage() {
                 className="template-card"
               >
                 <div
-                  className="template-card-preview"
-                  style={{ background: template.preview.accent }}
+                  className={`template-card-preview ${template.designStyle}`}
                 >
                   <span>{template.preview.eyebrow}</span>
                   <strong>{template.name}</strong>

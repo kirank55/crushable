@@ -1871,11 +1871,11 @@ export default function ChatPanel({
                     </option>
                   ))}
                 </select>
-                <span className="setup-field-hint">
-                  {selectedStyle
-                    ? `${selectedStyle.emoji} ${selectedStyle.label} will guide generation.`
-                    : 'Leave this on auto and Crushable will choose the best fit from your description.'}
-                </span>
+                  <span className="setup-field-hint">
+                    {selectedStyle
+                      ? `${selectedStyle.label} will guide generation.`
+                      : 'Leave this on auto and Crushable will choose the best fit from your description.'}
+                  </span>
               </div>
               <div className="setup-field">
                 <label>Brand / Company Name  <span className="optional-tag">optional</span></label>
@@ -1989,12 +1989,10 @@ export default function ChatPanel({
               <span className="setup-progress-step complete">1. Details</span>
               <span className="setup-progress-step active">2. Build</span>
             </div>
-            <Sparkles size={32} strokeWidth={1.5} />
             <h3>Welcome to Crushable</h3>
             <p>Start with a full-page brief or drop into section mode. The builder will stream sections into the live preview as you go.</p>
             {designStyle && (
               <div className="design-style-badge">
-                {selectedStyle?.emoji}{" "}
                 {selectedStyle?.label} style
               </div>
             )}

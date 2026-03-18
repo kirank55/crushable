@@ -24,8 +24,12 @@ export default function HomePage() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setProjects(getProjects());
-    setMounted(true);
+    const timeoutId = window.setTimeout(() => {
+      setProjects(getProjects());
+      setMounted(true);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, []);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [activeTemplateCategory, setActiveTemplateCategory] = useState('All');

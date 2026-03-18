@@ -17,6 +17,40 @@ function replaceBlockIdInHtml(html: string, blockId: string): string {
     return html;
 }
 
+function replaceOrInsertSectionAttribute(openingTag: string, attribute: string, value: string): string {
+    const attributePattern = new RegExp(`\\s${attribute}="[^"]*"`, 'i');
+
+    if (attributePattern.test(openingTag)) {
+        return openingTag.replace(attributePattern, ` ${attribute}="${value}"`);
+    }
+
+    return openingTag.replace(/^<section\b/i, `<section ${attribute}="${value}"`);
+}
+
+export function setRootSectionIdentifiers(html: string, sectionId: string): string {
+    if (!/^\s*<section\b/i.test(html)) {
+        return html;
+    }
+
+    return html.replace(/<section\b[^>]*>/i, (openingTag) => {
+        const withId = replaceOrInsertSectionAttribute(openingTag, 'id', sectionId);
+        return replaceOrInsertSectionAttribute(withId, 'data-block-id', sectionId);
+    });
+}
+
+function buildUniqueId(baseId: string, existingIds: string[]): string {
+    const normalizedBaseId = baseId.trim() || 'section';
+    let nextId = normalizedBaseId;
+    let suffix = 2;
+
+    while (existingIds.includes(nextId)) {
+        nextId = `${normalizedBaseId}-${suffix}`;
+        suffix += 1;
+    }
+
+    return nextId;
+}
+
 function buildUniqueBlockId(baseId: string, existingIds: string[]): string {
     const normalizedBaseId = baseId.replace(/-copy(?:-\d+)?$/, '');
     let nextId = `${normalizedBaseId}-copy`;
@@ -28,6 +62,21 @@ function buildUniqueBlockId(baseId: string, existingIds: string[]): string {
     }
 
     return nextId;
+}
+
+export function ensureUniqueBlockIdentity(block: Block, existingIds: string[]): Block {
+    const uniqueId = buildUniqueId(block.id, existingIds);
+    const normalizedHtml = setRootSectionIdentifiers(block.html, uniqueId);
+
+    if (uniqueId === block.id && normalizedHtml === block.html) {
+        return block;
+    }
+
+    return {
+        ...block,
+        id: uniqueId,
+        html: normalizedHtml,
+    };
 }
 
 export function createBlock(html: string, label?: string): Block {

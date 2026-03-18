@@ -2,8 +2,24 @@
 
 import { useState, useEffect } from 'react';
 import { Settings as SettingsIcon, X, Key, Cpu, CheckCircle, AlertCircle } from 'lucide-react';
-import { getApiKey, setApiKey, getModel, setModel } from '@/lib/storage';
-import { FREE_MODEL, getAvailableModels } from '@/types';
+import {
+    getApiKey,
+    getGenerationStrategy,
+    getModel,
+    getRefinementLevel,
+    setApiKey,
+    setGenerationStrategy,
+    setModel,
+    setRefinementLevel,
+} from '@/lib/storage';
+import {
+    DEFAULT_GENERATION_STRATEGY,
+    DEFAULT_REFINEMENT_LEVEL,
+    FREE_MODEL,
+    GenerationStrategy,
+    RefinementLevel,
+    getAvailableModels,
+} from '@/types';
 import { logger } from '@/lib/logger';
 
 interface SettingsModalProps {
@@ -14,6 +30,8 @@ interface SettingsModalProps {
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const [key, setKey] = useState('');
     const [selectedModel, setSelectedModel] = useState(FREE_MODEL);
+    const [generationStrategy, setGenerationStrategyState] = useState<GenerationStrategy>(DEFAULT_GENERATION_STRATEGY);
+    const [refinementLevel, setRefinementLevelState] = useState<RefinementLevel>(DEFAULT_REFINEMENT_LEVEL);
     const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
     const [testMessage, setTestMessage] = useState('');
 
@@ -24,6 +42,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         const frame = window.requestAnimationFrame(() => {
             setKey(getApiKey());
             setSelectedModel(getModel());
+            setGenerationStrategyState(getGenerationStrategy());
+            setRefinementLevelState(getRefinementLevel());
             setTestStatus('idle');
             setTestMessage('');
         });
@@ -32,9 +52,11 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }, [isOpen]);
 
     const handleSave = () => {
-        logger.action('Settings save', { model: selectedModel, hasKey: !!key });
+        logger.action('Settings save', { model: selectedModel, hasKey: !!key, generationStrategy, refinementLevel });
         setApiKey(key);
         setModel(selectedModel);
+        setGenerationStrategy(generationStrategy);
+        setRefinementLevel(refinementLevel);
         onClose();
     };
 
@@ -124,6 +146,35 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         {!key.trim() && (
                             <p className="setting-hint" style={{ marginTop: 6 }}>Add an API key above to unlock premium models (Claude, GPT-4o, Gemini)</p>
                         )}
+                    </div>
+
+                    <div className="setting-group">
+                        <label className="setting-label">Generation Strategy</label>
+                        <p className="setting-hint">Choose whether Crushable should prefer raw HTML, templates, or component composition during multi-section generation.</p>
+                        <select
+                            value={generationStrategy}
+                            onChange={(e) => setGenerationStrategyState(e.target.value as GenerationStrategy)}
+                            className="setting-input"
+                        >
+                            <option value="hybrid">Hybrid</option>
+                            <option value="template-first">Template First</option>
+                            <option value="component-first">Component First</option>
+                            <option value="html-only">HTML Only</option>
+                        </select>
+                    </div>
+
+                    <div className="setting-group">
+                        <label className="setting-label">Auto-Refinement</label>
+                        <p className="setting-hint">Light applies deterministic validation fixes. Full also runs AI critique and one refinement pass for weak sections.</p>
+                        <select
+                            value={refinementLevel}
+                            onChange={(e) => setRefinementLevelState(e.target.value as RefinementLevel)}
+                            className="setting-input"
+                        >
+                            <option value="off">Off</option>
+                            <option value="light">Light</option>
+                            <option value="full">Full</option>
+                        </select>
                     </div>
 
                     <div className="setting-actions">

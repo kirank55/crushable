@@ -1,10 +1,28 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { Block, Message, DESIGN_STYLES } from "@/types";
-import { createBlock } from "@/lib/blocks";
-import { getApiKey, getModel } from "@/lib/storage";
-import { parseResponse, parsePlanResponse } from "@/lib/prompt";
+import {
+  Block,
+  ComponentManifestItem,
+  DESIGN_STYLES,
+  HtmlPatch,
+  Message,
+  SectionCritique,
+  ValidationIssue,
+} from "@/types";
+import { createBlock, ensureUniqueBlockIdentity, setRootSectionIdentifiers } from "@/lib/blocks";
+import {
+  getApiKey,
+  getGenerationStrategy,
+  getModel,
+  getRefinementLevel,
+} from "@/lib/storage";
+import {
+  parseJsonArrayResponse,
+  parseJsonObjectResponse,
+  parsePlanResponse,
+  parseResponse,
+} from "@/lib/prompt";
 import {
   Send,
   Loader2,
@@ -33,7 +51,30 @@ import {
 import { v4 as uuidv4 } from "uuid";
 import { logger } from "@/lib/logger";
 import { generateFullHTML } from "@/lib/export";
-import { validateGeneratedHtml, ValidationIssue } from "@/lib/validate";
+import {
+  applyGlobalValidationFixes,
+  autoFixIssues,
+  validateGeneratedHtml,
+} from "@/lib/validate";
+import {
+  fillTemplateSkeleton,
+  getSectionTemplateById,
+  inferTemplateCategory,
+  pickTemplateForSection,
+  SECTION_TEMPLATES,
+} from "@/lib/section-templates";
+import {
+  buildComponentCatalog,
+  buildSectionGenerationPrompt,
+  buildSectionMap,
+  buildTemplateCatalog,
+  extractKeywords,
+  formatParallelProgress,
+  runWithConcurrency,
+} from "@/lib/generation";
+import { getComponentSummaries, renderComponentManifestItem } from "@/lib/component-registry";
+import { inferIndustryFromContext, retrieveExamples } from "@/lib/rag";
+import { applyPatch, summarizePatch } from "@/lib/patch";
 
 interface ChatPanelProps {
   blocks: Block[];
@@ -75,6 +116,10 @@ type LoadingStatus = {
 type PlannedSection = {
   title: string;
   details?: string;
+};
+
+type PlannedSectionBlueprint = PlannedSection & {
+  id: string;
 };
 
 function formatMessageTime(timestamp?: number): string | null {
@@ -277,6 +322,27 @@ function buildSectionId(title: string, index: number): string {
     .replace(/-{2,}/g, "-");
 
   return slug || `section-${index + 1}`;
+}
+
+function buildSectionBlueprint(sections: PlannedSection[]): PlannedSectionBlueprint[] {
+  const usedIds = new Set<string>();
+
+  return sections.map((section, index) => {
+    const baseId = buildSectionId(section.title, index);
+    let nextId = baseId;
+    let suffix = 2;
+
+    while (usedIds.has(nextId)) {
+      nextId = `${baseId}-${suffix}`;
+      suffix += 1;
+    }
+
+    usedIds.add(nextId);
+    return {
+      ...section,
+      id: nextId,
+    };
+  });
 }
 
 function buildPreviousChangeExplanation(messages: Message[]): string | null {
@@ -536,6 +602,12 @@ export default function ChatPanel({
   };
 
   const handleDesignStyleSelect = (styleId: string) => {
+    const selectedStyle = DESIGN_STYLES.find((style) => style.id === styleId);
+    logger.info('Design style selected', {
+      styleId,
+      styleLabel: selectedStyle?.label ?? styleId,
+      source: 'manual',
+    });
     onSetDesignStyle(styleId);
   };
 
@@ -560,6 +632,62 @@ export default function ChatPanel({
     return DESIGN_STYLES.some((style) => style.id === styleId) ? styleId : 'professional';
   }, []);
 
+  const requestModelText = useCallback(
+    async (payload: Record<string, unknown>): Promise<string> => {
+      const response = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: abortControllerRef.current?.signal,
+        body: JSON.stringify({
+          apiKey: getApiKey(),
+          model: getModel(),
+          designStylePrompt,
+          projectContext,
+          designStyle,
+          ...payload,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => null);
+        throw new Error(error?.error || "Failed to generate");
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No response stream");
+
+      const decoder = new TextDecoder();
+      let fullContent = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        fullContent += decoder.decode(value, { stream: true });
+      }
+
+      return fullContent;
+    },
+    [designStyle, designStylePrompt, projectContext],
+  );
+
+  const getSectionExamples = useCallback(
+    (section: PlannedSection): ReturnType<typeof retrieveExamples> => {
+      const industry = inferIndustryFromContext(projectContext);
+      return retrieveExamples(
+        {
+          industry,
+          sectionType: inferTemplateCategory(section.title),
+          designStyle: designStyle || "professional",
+          keywords: extractKeywords(
+            `${section.title} ${section.details || ""} ${projectContext || ""}`,
+          ),
+        },
+        2,
+      );
+    },
+    [designStyle, projectContext],
+  );
+
   const summarizeValidationIssues = useCallback((issues: ValidationIssue[]) => {
     if (issues.length === 0) {
       return 'Validation complete — no issues found in the assembled page.';
@@ -573,21 +701,286 @@ export default function ChatPanel({
     return `Validation found ${issues.length} issue${issues.length === 1 ? '' : 's'}: ${preview}`;
   }, []);
 
-  const runGenerationValidation = useCallback((candidateBlocks: Block[]) => {
-    const fullHtml = generateFullHTML(candidateBlocks);
-    const issues = validateGeneratedHtml(fullHtml);
+  const generateSection = useCallback(
+    async (
+      prompt: string,
+      mode: "new" | "edit",
+      currentBlock?: Block,
+    ): Promise<{ summary: string; html: string; raw: string }> => {
+      const model = getModel();
+
+      setLoadingStatus({
+        phase: "requesting",
+        model: getModelLabel(model || "auto:free"),
+      });
+
+      const normalizedPrompt = prompt.toLowerCase();
+      const promptWithReview =
+        mode === "new" && /\bhero\b/.test(normalizedPrompt)
+          ? `${prompt}\n\nFinal review before returning HTML:\n- Review the hero for awkward empty space, off-balance composition, floating badges/media, and spacing mistakes.\n- Do not default to centered content. Choose the alignment that best suits the composition.\n- Only keep a full-viewport hero when the layout remains visually balanced; otherwise use padding-based height instead of min-h-screen or 100vh.\n- If you use viewport-height sizing, explicitly balance the layout so the content does not sit awkwardly at the top with large empty space below.`
+          : prompt;
+
+      const fullContent = await requestModelText({
+        prompt: promptWithReview,
+        currentHtml: currentBlock?.html,
+        blockId: currentBlock?.id,
+        mode,
+      });
+
+      setLoadingStatus((prev) => ({ ...prev, phase: "generating" }));
+
+      const { summary, html } = parseResponse(fullContent);
+      return { summary, html, raw: fullContent };
+    },
+    [requestModelText],
+  );
+
+  const editBlockWithPatchFallback = useCallback(
+    async (prompt: string, currentBlock: Block) => {
+      try {
+        const patchContent = await requestModelText({
+          prompt,
+          currentHtml: currentBlock.html,
+          blockId: currentBlock.id,
+          mode: "patch-edit",
+        });
+        const patch = parseJsonObjectResponse<HtmlPatch>(patchContent);
+        if (patch?.ops?.length) {
+          const html = applyPatch(currentBlock.html, patch);
+          const summaryLines = summarizePatch(patch);
+          return {
+            summary:
+              summaryLines.join(" ") || "Applied a targeted section update.",
+            html,
+            raw: patchContent,
+          };
+        }
+      } catch (error) {
+        logger.error("Patch edit fallback", error);
+      }
+
+      return generateSection(prompt, "edit", currentBlock);
+    },
+    [generateSection, requestModelText],
+  );
+
+  const critiqueSection = useCallback(
+    async (block: Block): Promise<SectionCritique | null> => {
+      try {
+        const critiqueContent = await requestModelText({
+          currentHtml: block.html,
+          blockId: block.id,
+          sectionRole: block.label,
+          mode: "critique",
+        });
+
+        return parseJsonObjectResponse<SectionCritique>(critiqueContent);
+      } catch (error) {
+        logger.error("Critique section", error);
+        return null;
+      }
+    },
+    [requestModelText],
+  );
+
+  const fillTemplateForSection = useCallback(
+    async (section: PlannedSectionBlueprint, templateId: string) => {
+      const template = getSectionTemplateById(templateId);
+      if (!template) {
+        throw new Error(`Unknown template: ${templateId}`);
+      }
+
+      const responseText = await requestModelText({
+        prompt: `${section.title}\n${section.details || ""}`,
+        mode: "fill-template",
+        templateSkeleton: template.skeleton,
+        sectionRole: section.title,
+      });
+      const values = parseJsonObjectResponse<Record<string, string>>(responseText);
+      if (!values) {
+        throw new Error(`Template fill failed for ${section.title}`);
+      }
+
+      return {
+        summary: `Filled the ${template.name} template for ${section.title}.`,
+        html: setRootSectionIdentifiers(fillTemplateSkeleton(template.skeleton, values), section.id),
+        raw: responseText,
+      };
+    },
+    [requestModelText],
+  );
+
+  const selectTemplatesForSections = useCallback(
+    async (sections: PlannedSectionBlueprint[]) => {
+      const fallbackSelections = Object.fromEntries(
+        sections
+          .map((section) => [
+            section.title,
+            pickTemplateForSection(section.title, designStyle)?.id,
+          ])
+          .filter((entry): entry is [string, string] => Boolean(entry[1])),
+      );
+
+      try {
+        const responseText = await requestModelText({
+          mode: "select-templates",
+          sections: sections.map((section) => section.title),
+          templateCatalog: buildTemplateCatalog(SECTION_TEMPLATES),
+        });
+        const parsed = parseJsonObjectResponse<Record<string, string>>(responseText);
+        return {
+          ...fallbackSelections,
+          ...(parsed || {}),
+        };
+      } catch (error) {
+        logger.error("Select templates", error);
+        return fallbackSelections;
+      }
+    },
+    [designStyle, requestModelText],
+  );
+
+  const composeSectionsFromComponents = useCallback(
+    async (sections: PlannedSectionBlueprint[]): Promise<Block[] | null> => {
+      try {
+        const responseText = await requestModelText({
+          prompt:
+            projectContext ||
+            sections.map((section) => section.title).join("\n"),
+          mode: "compose",
+          componentCatalog: buildComponentCatalog(getComponentSummaries()),
+          sectionPlan: sections.map((section) => section.title),
+        });
+        const manifest = parseJsonArrayResponse<ComponentManifestItem>(responseText);
+        if (!manifest || manifest.length < sections.length) {
+          return null;
+        }
+
+        return manifest.slice(0, sections.length).map((item, index) => {
+          const html = setRootSectionIdentifiers(
+            renderComponentManifestItem(item),
+            sections[index].id,
+          );
+          return createBlock(html, sections[index].title);
+        });
+      } catch (error) {
+        logger.error("Compose sections", error);
+        return null;
+      }
+    },
+    [projectContext, requestModelText],
+  );
+
+  const generatePlannedSection = useCallback(
+    async (
+      section: PlannedSectionBlueprint,
+      index: number,
+      totalSections: number,
+      sectionMap: string,
+      templateSelections: Record<string, string>,
+    ) => {
+      const generationStrategy = getGenerationStrategy();
+      const selectedTemplateId = templateSelections[section.title];
+
+      if (
+        generationStrategy !== "html-only" &&
+        selectedTemplateId &&
+        (generationStrategy === "template-first" || generationStrategy === "hybrid" || generationStrategy === "component-first")
+      ) {
+        try {
+          return await fillTemplateForSection(section, selectedTemplateId);
+        } catch (error) {
+          logger.error("Template fill fallback", error);
+        }
+      }
+
+      const result = await generateSection(
+        buildSectionGenerationPrompt({
+          section,
+          index,
+          totalSections,
+          sectionMap,
+          examples: getSectionExamples(section),
+        }),
+        "new",
+      );
+
+      return {
+        ...result,
+        html: setRootSectionIdentifiers(result.html, section.id),
+      };
+    },
+    [fillTemplateForSection, generateSection, getSectionExamples],
+  );
+
+  const runGenerationValidation = useCallback(async (candidateBlocks: Block[]) => {
+    const refinementLevel = getRefinementLevel();
+    const normalizedHtml = applyGlobalValidationFixes(generateFullHTML(candidateBlocks));
+    const issues = validateGeneratedHtml(normalizedHtml);
+
+    let nextBlocks = candidateBlocks.map((block) => ({ ...block }));
+    const appliedFixes: string[] = [];
+
+    if (refinementLevel !== "off") {
+      const autoFixed = autoFixIssues(nextBlocks, issues);
+      nextBlocks = autoFixed.blocks;
+      appliedFixes.push(...autoFixed.applied);
+    }
+
+    if (refinementLevel === "full") {
+      for (let index = 0; index < nextBlocks.length; index += 1) {
+        const block = nextBlocks[index];
+        const critique = await critiqueSection(block);
+        if (!critique) continue;
+
+        const scores = [
+          critique.visualAppeal,
+          critique.copyQuality,
+          critique.conversionPotential,
+          critique.mobileReadiness,
+        ];
+        if (scores.every((score) => score >= 6) || !critique.suggestedPrompt) {
+          continue;
+        }
+
+        const refinementPrompt = [
+          critique.suggestedPrompt,
+          critique.issues.length > 0
+            ? `Address these issues:\n- ${critique.issues.join("\n- ")}`
+            : "",
+        ]
+          .filter(Boolean)
+          .join("\n\n");
+
+        const refined = await generateSection(refinementPrompt, "edit", block);
+        nextBlocks[index] = { ...block, html: refined.html };
+        appliedFixes.push(`Refined ${block.label} after critique.`);
+      }
+    }
+
+    nextBlocks.forEach((block) => {
+      const original = candidateBlocks.find((candidate) => candidate.id === block.id);
+      if (original && original.html !== block.html) {
+        onUpdateBlock(block.id, block.html);
+      }
+    });
+
+    const summarySuffix =
+      appliedFixes.length > 0
+        ? ` Applied fixes: ${appliedFixes.slice(0, 3).join(" ")}`
+        : "";
 
     const validationMessage: Message = {
       id: uuidv4(),
-      role: 'assistant',
-      content: '',
-      summary: summarizeValidationIssues(issues),
+      role: "assistant",
+      content: "",
+      summary: `${summarizeValidationIssues(issues)}${summarySuffix}`,
       timestamp: Date.now(),
     };
 
     setMessages((prev) => [...prev, validationMessage]);
-    return issues;
-  }, [summarizeValidationIssues]);
+    return nextBlocks;
+  }, [critiqueSection, generateSection, onUpdateBlock, summarizeValidationIssues]);
 
   const handleSetupComplete = useCallback(async () => {
     const productDescription = (setupDetails.productDescription || '').trim();
@@ -599,6 +992,12 @@ export default function ChatPanel({
       let resolvedStyle = designStyle;
       if (!resolvedStyle) {
         resolvedStyle = await requestStyleSelection(productDescription);
+        const selectedStyle = DESIGN_STYLES.find((style) => style.id === resolvedStyle);
+        logger.info('Design style selected', {
+          styleId: resolvedStyle,
+          styleLabel: selectedStyle?.label ?? resolvedStyle,
+          source: 'auto',
+        });
         onSetDesignStyle(resolvedStyle);
       }
 
@@ -614,75 +1013,12 @@ export default function ChatPanel({
     }
   }, [designStyle, onSetDesignStyle, onSetProjectDetails, requestStyleSelection, setupDetails]);
 
-  /** Generate a single section via API */
-  const generateSection = useCallback(
-    async (
-      prompt: string,
-      mode: "new" | "edit",
-      currentBlock?: Block,
-    ): Promise<{ summary: string; html: string; raw: string }> => {
-      const apiKey = getApiKey();
-      const model = getModel();
-
-      setLoadingStatus({
-        phase: "requesting",
-        model: getModelLabel(model || "auto:free"),
-      });
-
-      const response = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: abortControllerRef.current?.signal,
-        body: JSON.stringify({
-          prompt,
-          currentHtml: currentBlock?.html,
-          blockId: currentBlock?.id,
-          mode,
-          apiKey,
-          model,
-          designStylePrompt,
-          projectContext,
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to generate");
-      }
-
-      setLoadingStatus((prev) => ({ ...prev, phase: "generating" }));
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error("No response stream");
-
-      const decoder = new TextDecoder();
-      let fullContent = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        fullContent += decoder.decode(value, { stream: true });
-      }
-
-      const { summary, html } = parseResponse(fullContent);
-      return { summary, html, raw: fullContent };
-    },
-    [designStylePrompt, projectContext],
-  );
-
   const executeSectionPlan = useCallback(
     async (sections: PlannedSection[], implementationSummary: string) => {
       const model = getModel();
-      const sectionBlueprint = sections.map((section, index) => ({
-        ...section,
-        id: buildSectionId(section.title, index),
-      }));
-      const anchorTargets = sectionBlueprint.filter(
-        (section) => section.id !== "home",
-      );
-      const sectionMap = anchorTargets
-        .map((section) => `- ${section.title} -> #${section.id}`)
-        .join("\n");
+      const generationStrategy = getGenerationStrategy();
+      const sectionBlueprint = buildSectionBlueprint(sections);
+      const sectionMap = buildSectionMap(sectionBlueprint);
 
       const implMsg: Message = {
         id: uuidv4(),
@@ -691,118 +1027,151 @@ export default function ChatPanel({
         summary: implementationSummary,
         timestamp: Date.now(),
       };
-      setMessages((prev) => [...prev, implMsg]);
+      const trackerId = uuidv4();
+      const progressStates = sectionBlueprint.map((section) => ({
+        title: section.title,
+        status: "pending" as const,
+      }));
 
-      const results: { summary: string; html: string }[] = [];
-      for (let i = 0; i < sectionBlueprint.length; i++) {
-        const section = sectionBlueprint[i];
-        const isNavbarSection = section.id === "home";
-        const sectionProgressMessageId = uuidv4();
-
-        const sectionProgressMsg: Message = {
-          id: sectionProgressMessageId,
+      setMessages((prev) => [
+        ...prev,
+        implMsg,
+        {
+          id: trackerId,
           role: "assistant",
           content: "",
+          summary: `Parallel generation started. ${formatParallelProgress(progressStates)}`,
           timestamp: Date.now(),
-        };
-        setMessages((prev) => [...prev, sectionProgressMsg]);
+        },
+      ]);
 
+      const updateTracker = () => {
+        const trackerSummary = `Parallel generation in progress. ${formatParallelProgress(progressStates)}`;
+        setMessages((prev) =>
+          prev.map((message) =>
+            message.id === trackerId
+              ? { ...message, summary: trackerSummary }
+              : message,
+          ),
+        );
+      };
+
+      if (generationStrategy === "component-first") {
+        const composedBlocks = await composeSectionsFromComponents(sectionBlueprint);
+        if (composedBlocks) {
+          const uniqueBlocks = composedBlocks.reduce<Block[]>((acc, block) => {
+            const nextBlock = ensureUniqueBlockIdentity(
+              block,
+              [...blocks, ...acc].map((candidate) => candidate.id),
+            );
+            acc.push(nextBlock);
+            return acc;
+          }, []);
+
+          uniqueBlocks.forEach((block) => onAddBlock(block));
+          await runGenerationValidation([...blocks, ...uniqueBlocks]);
+          setMessages((prev) =>
+            prev.map((message) =>
+              message.id === trackerId
+                ? {
+                    ...message,
+                    summary: `Component composition complete. ${uniqueBlocks.length} sections assembled from the library.`,
+                  }
+                : message,
+            ),
+          );
+          return uniqueBlocks.map((block) => ({
+            summary: `Composed ${block.label} from the component library.`,
+            html: block.html,
+          }));
+        }
+      }
+
+      const templateSelections =
+        generationStrategy === "html-only"
+          ? {}
+          : await selectTemplatesForSections(sectionBlueprint);
+      const concurrencyLimit = model === "auto:free" ? 3 : 4;
+      const results: Array<{ summary: string; html: string }> = new Array(
+        sectionBlueprint.length,
+      );
+      const insertedBlocks: Block[] = [];
+      let nextInsertIndex = 0;
+
+      await runWithConcurrency(sectionBlueprint, concurrencyLimit, async (section, index) => {
+        progressStates[index].status = "running";
         setLoadingStatus({
           phase: "building",
           model: getModelLabel(model || "auto:free"),
           currentSection: section.title,
-          sectionIndex: i + 1,
+          sectionIndex: index + 1,
           totalSections: sectionBlueprint.length,
         });
+        updateTracker();
 
-        const sectionPrompt = [
-          `Create a ${section.title} section for a landing page. This is section ${i + 1} of ${sectionBlueprint.length}.`,
-          `Use id="${section.id}" on the root <section>.`,
-          sectionMap ? `Page section map:\n${sectionMap}` : "",
-          isNavbarSection
-            ? "If this is the navbar, include anchor links ONLY for the sections listed in the page section map. Do not invent links to sections that are not being generated."
-            : "Make sure this section matches its assigned role in the page section map so navbar links stay valid.",
-          section.details ? `Requirements: ${section.details}` : "",
-        ]
-          .filter(Boolean)
-          .join("\n\n");
-
-        const result = await generateSection(sectionPrompt, "new");
-
-        const newBlock = createBlock(result.html);
-        onAddBlock(newBlock);
-        results.push(result);
-
-        setMessages((prev) =>
-          prev.map((message) =>
-            message.id === sectionProgressMessageId
-              ? {
-                ...message,
-                summary: `Section ${i + 1}/${sections.length} done: ${result.summary}`,
-              }
-              : message,
-          ),
+        const result = await generatePlannedSection(
+          section,
+          index,
+          sectionBlueprint.length,
+          sectionMap,
+          templateSelections,
         );
+        results[index] = result;
+        progressStates[index].status = "done";
+        updateTracker();
 
-        await new Promise((resolve) => setTimeout(resolve, 300));
-      }
+        while (results[nextInsertIndex]) {
+          const candidateBlock = createBlock(
+            results[nextInsertIndex].html,
+            sectionBlueprint[nextInsertIndex].title,
+          );
+          const nextBlock = ensureUniqueBlockIdentity(
+            candidateBlock,
+            [...blocks, ...insertedBlocks].map((block) => block.id),
+          );
+          insertedBlocks.push(nextBlock);
+          onAddBlock(nextBlock);
+          nextInsertIndex += 1;
+        }
+      });
 
-      runGenerationValidation([...blocks, ...results.map((result) => createBlock(result.html))]);
+      await runGenerationValidation([...blocks, ...insertedBlocks]);
 
-      return results;
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === trackerId
+            ? {
+                ...message,
+                summary: `Parallel generation complete. ${formatParallelProgress(progressStates)}`,
+              }
+            : message,
+        ),
+      );
+
+      return results.filter((result): result is { summary: string; html: string } => Boolean(result));
     },
-    [blocks, generateSection, onAddBlock, runGenerationValidation],
+    [
+      blocks,
+      composeSectionsFromComponents,
+      generatePlannedSection,
+      onAddBlock,
+      runGenerationValidation,
+      selectTemplatesForSections,
+    ],
   );
 
   /** Handle multi-section generation (e.g. "build a landing page") */
   const handleMultiSectionGeneration = useCallback(
     async (prompt: string) => {
       setLoadingStatus({ phase: "planning" });
-
-      // Step 1: Plan the sections
-      const apiKey = getApiKey();
-      const model = getModel();
-      const planResponse = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: abortControllerRef.current?.signal,
-        body: JSON.stringify({
-          prompt,
-          mode: "plan",
-          apiKey,
-          model,
-          designStylePrompt,
-          projectContext,
-        }),
+      const planContent = await requestModelText({
+        prompt,
+        mode: "plan",
       });
-
-      if (!planResponse.ok) {
-        const error = await planResponse.json();
-        throw new Error(error.error || "Failed to plan page");
-      }
-
-      const planReader = planResponse.body?.getReader();
-      if (!planReader) throw new Error("No plan response");
-      const planDecoder = new TextDecoder();
-      let planContent = "";
-      while (true) {
-        const { done, value } = await planReader.read();
-        if (done) break;
-        planContent += planDecoder.decode(value, { stream: true });
-      }
 
       const sections = parsePlanResponse(planContent);
       logger.info("Multi-section plan", { sections });
-      const sectionBlueprint = sections.map((section, index) => ({
-        title: section,
-        id: buildSectionId(section, index),
-      }));
-      const sectionMap = sectionBlueprint
-        .filter((section) => section.id !== "home")
-        .map((section) => `- ${section.title} -> #${section.id}`)
-        .join("\n");
 
-      // Message 1: Plan completed — show what was planned
       const planSummary = sections
         .map((section, i) => `${i + 1}. ${section}`)
         .join("\n");
@@ -814,81 +1183,12 @@ export default function ChatPanel({
         timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, planMsg]);
-
-      // Small pause so user can read the plan
-      await new Promise((resolve) => setTimeout(resolve, 600));
-
-      // Message 2: Starting implementation
-      const implMsg: Message = {
-        id: uuidv4(),
-        role: "assistant",
-        content: "",
-        summary: `🚀 **Now implementing!** Building all ${sections.length} sections one by one…`,
-        timestamp: Date.now(),
-      };
-      setMessages((prev) => [...prev, implMsg]);
-
-      // Step 2: Build each section one by one
-      const results: { summary: string; html: string }[] = [];
-      for (let i = 0; i < sections.length; i++) {
-        const section = sectionBlueprint[i];
-        const isNavbarSection = section.id === "home";
-        const sectionProgressMessageId = uuidv4();
-
-        const sectionProgressMsg: Message = {
-          id: sectionProgressMessageId,
-          role: "assistant",
-          content: "",
-          timestamp: Date.now(),
-        };
-        setMessages((prev) => [...prev, sectionProgressMsg]);
-
-        setLoadingStatus({
-          phase: "building",
-          model: getModelLabel(model || "auto:free"),
-          currentSection: section.title,
-          sectionIndex: i + 1,
-          totalSections: sections.length,
-        });
-
-        const result = await generateSection(
-          [
-            `Create a ${section.title} section for a landing page. This is section ${i + 1} of ${sections.length}.`,
-            `Use id="${section.id}" on the root <section>.`,
-            sectionMap ? `Page section map:\n${sectionMap}` : "",
-            isNavbarSection
-              ? "If this is the navbar, include anchor links ONLY for the sections listed in the page section map. Do not invent links to sections that are not being generated."
-              : "Make sure this section matches its assigned role in the page section map so navbar links stay valid.",
-          ]
-            .filter(Boolean)
-            .join("\n\n"),
-          "new",
-        );
-
-        const newBlock = createBlock(result.html);
-        onAddBlock(newBlock);
-        results.push(result);
-
-        setMessages((prev) =>
-          prev.map((message) =>
-            message.id === sectionProgressMessageId
-              ? {
-                ...message,
-                summary: `Section ${i + 1}/${sections.length} done: ${result.summary}`,
-              }
-              : message,
-          ),
-        );
-
-        // Small delay between sections
-        await new Promise((resolve) => setTimeout(resolve, 300));
-      }
-
-      runGenerationValidation([...blocks, ...results.map((result) => createBlock(result.html))]);
-
-      return results;
+      return executeSectionPlan(
+        sections.map((section) => ({ title: section })),
+        `Planning complete — building ${sections.length} sections with the active generation strategy.`,
+      );
     },
-    [blocks, designStylePrompt, projectContext, generateSection, onAddBlock, runGenerationValidation],
+    [executeSectionPlan, requestModelText],
   );
 
   const handleSubmit = async (
@@ -1075,6 +1375,7 @@ export default function ChatPanel({
         );
 
         const results: string[] = [];
+        const updatedBlockHtml = new Map<string, string>();
         for (let i = 0; i < editBlocks.length; i++) {
           const block = editBlocks[i];
           setLoadingStatus({
@@ -1091,14 +1392,14 @@ export default function ChatPanel({
             .map((b) => b.label)
             .join(", ")}. Apply only the changes relevant to THIS section.`;
 
-          const result = await generateSection(
+          const result = await editBlockWithPatchFallback(
             `${multiEditContext}\n\nUser request: ${trimmed}`,
-            "edit",
             block,
           );
 
           const diff = buildUnifiedDiff(block.html, result.html);
           onUpdateBlock(block.id, result.html);
+          updatedBlockHtml.set(block.id, result.html);
           results.push(`${block.label}: ${result.summary}`);
 
           // Per-section progress message
@@ -1110,9 +1411,15 @@ export default function ChatPanel({
             timestamp: Date.now(),
           };
           setMessages((prev) => [...prev, progressMsg]);
-
-          await new Promise((resolve) => setTimeout(resolve, 300));
         }
+
+        await runGenerationValidation(
+          blocks.map((block) =>
+            updatedBlockHtml.has(block.id)
+              ? { ...block, html: updatedBlockHtml.get(block.id)! }
+              : block,
+          ),
+        );
 
         setMessages((prev) =>
           prev.map((m) =>
@@ -1165,48 +1472,19 @@ export default function ChatPanel({
           editPrompt = `${trimmed}\n\n[Page context — other sections on this page:\n${sectionMap}\nUse these section IDs for any anchor links or scroll references.]`;
         }
 
-        const response = await fetch("/api/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          signal: abortControllerRef.current?.signal,
-          body: JSON.stringify({
-            prompt: editPrompt,
-            currentHtml: currentSelectedBlock?.html,
-            blockId: currentSelectedBlock?.id,
-            mode,
-            apiKey: getApiKey(),
-            model: getModel(),
-            designStylePrompt,
-            projectContext,
-          }),
-        });
+        const result =
+          mode === "edit" && currentSelectedBlock
+            ? await editBlockWithPatchFallback(editPrompt, currentSelectedBlock)
+            : await generateSection(editPrompt, mode, currentSelectedBlock);
 
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || "Failed to generate");
-        }
+        const normalizedResult =
+          mode === "edit" && currentSelectedBlock
+            ? {
+                ...result,
+                html: setRootSectionIdentifiers(result.html, currentSelectedBlock.id),
+              }
+            : result;
 
-        setLoadingStatus((prev) => ({ ...prev, phase: "generating" }));
-
-        const reader = response.body?.getReader();
-        if (!reader) throw new Error("No response stream");
-
-        const decoder = new TextDecoder();
-        let fullContent = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          fullContent += chunk;
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMessage.id ? { ...m, content: fullContent } : m,
-            ),
-          );
-        }
-
-        const { summary, html: htmlContent } = parseResponse(fullContent);
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantMessage.id
@@ -1214,19 +1492,30 @@ export default function ChatPanel({
                 ...m,
                 content:
                   mode === "edit" && currentSelectedBlock
-                    ? buildUnifiedDiff(currentSelectedBlock.html, htmlContent)
-                    : fullContent,
-                summary,
+                    ? buildUnifiedDiff(currentSelectedBlock.html, normalizedResult.html)
+                    : normalizedResult.raw,
+                summary: normalizedResult.summary,
               }
               : m,
           ),
         );
 
         if (mode === "edit" && currentSelectedBlock) {
-          onUpdateBlock(currentSelectedBlock.id, htmlContent);
+          onUpdateBlock(currentSelectedBlock.id, normalizedResult.html);
+          await runGenerationValidation(
+            blocks.map((block) =>
+              block.id === currentSelectedBlock.id
+                ? { ...block, html: normalizedResult.html }
+                : block,
+            ),
+          );
         } else {
-          const newBlock = createBlock(htmlContent);
+          const newBlock = ensureUniqueBlockIdentity(
+            createBlock(normalizedResult.html),
+            blocks.map((block) => block.id),
+          );
           onAddBlock(newBlock);
+          await runGenerationValidation([...blocks, newBlock]);
         }
         onVersionCreated(trimmed);
       }
@@ -1435,9 +1724,9 @@ export default function ChatPanel({
     setMessages((prev) => [...prev, assistantMessage]);
 
     try {
-      const results = await executeSectionPlan(
+          const results = await executeSectionPlan(
         plannedSections,
-        `Building your page section by section...`,
+        `Building your page with parallel generation and structured fallbacks...`,
       );
       const summaries = results
         .map((result, index) => `${index + 1}. ${result.summary}`)

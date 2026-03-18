@@ -1,9 +1,19 @@
-import { Project, Settings, FREE_MODEL } from '@/types';
+import {
+    DEFAULT_GENERATION_STRATEGY,
+    DEFAULT_REFINEMENT_LEVEL,
+    FREE_MODEL,
+    GenerationStrategy,
+    Project,
+    RefinementLevel,
+    Settings,
+} from '@/types';
 import { logger } from '@/lib/logger';
 
 const KEYS = {
     apiKey: 'crushable:apiKey',
     model: 'crushable:model',
+    generationStrategy: 'crushable:generationStrategy',
+    refinementLevel: 'crushable:refinementLevel',
     projects: 'crushable:projects',
     currentProjectId: 'crushable:currentProjectId',
 };
@@ -39,10 +49,42 @@ export function setModel(model: string): void {
     emitSettingsChange();
 }
 
+export function getGenerationStrategy(): GenerationStrategy {
+    if (typeof window === 'undefined') return DEFAULT_GENERATION_STRATEGY;
+    const saved = localStorage.getItem(KEYS.generationStrategy) as GenerationStrategy | null;
+    if (saved === 'hybrid' || saved === 'template-first' || saved === 'component-first' || saved === 'html-only') {
+        return saved;
+    }
+    return DEFAULT_GENERATION_STRATEGY;
+}
+
+export function setGenerationStrategy(strategy: GenerationStrategy): void {
+    logger.storage('setGenerationStrategy', { strategy });
+    localStorage.setItem(KEYS.generationStrategy, strategy);
+    emitSettingsChange();
+}
+
+export function getRefinementLevel(): RefinementLevel {
+    if (typeof window === 'undefined') return DEFAULT_REFINEMENT_LEVEL;
+    const saved = localStorage.getItem(KEYS.refinementLevel) as RefinementLevel | null;
+    if (saved === 'off' || saved === 'light' || saved === 'full') {
+        return saved;
+    }
+    return DEFAULT_REFINEMENT_LEVEL;
+}
+
+export function setRefinementLevel(level: RefinementLevel): void {
+    logger.storage('setRefinementLevel', { level });
+    localStorage.setItem(KEYS.refinementLevel, level);
+    emitSettingsChange();
+}
+
 export function getSettings(): Settings {
     return {
         apiKey: getApiKey(),
         model: getModel(),
+        generationStrategy: getGenerationStrategy(),
+        refinementLevel: getRefinementLevel(),
     };
 }
 

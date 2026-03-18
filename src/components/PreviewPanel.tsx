@@ -148,7 +148,6 @@ export default function PreviewPanel({
         });
         setElementInstruction('');
         setElementEditError(null);
-        onSelectBlock?.(event.data.blockId);
       }
     };
     window.addEventListener('message', handleMessage);
@@ -334,10 +333,10 @@ export default function PreviewPanel({
           var block = findBlock(event.target);
           if (!block) return;
 
-          event.preventDefault();
-          event.stopPropagation();
-
           if (editMode && (event.ctrlKey || event.metaKey)) {
+            event.preventDefault();
+            event.stopPropagation();
+
             var element = findEditableElement(event.target, block) || block;
             var selector = buildElementSelector(element, block);
 
@@ -354,18 +353,7 @@ export default function PreviewPanel({
               },
               '*'
             );
-            return;
           }
-
-          setSelected(block, true);
-          window.parent.postMessage(
-            {
-              __crushable_preview: true,
-              type: 'select-block',
-              blockId: getBlockId(block),
-            },
-            '*'
-          );
         }, true);
 
         window.addEventListener('message', function(event) {
@@ -415,7 +403,7 @@ export default function PreviewPanel({
     body { font-family: 'Inter', system-ui, sans-serif; margin: 0; cursor: default; background:
       radial-gradient(circle at top, rgba(56, 189, 248, 0.08), transparent 24%),
       ${STYLE_BODY_BG[designStyle || ''] || '#ffffff'}; }
-    [data-block-id] { cursor: pointer; }
+    [data-block-id] { cursor: default; }
     .empty-state {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       min-height: 100vh; color: #64748b; background:
@@ -771,7 +759,7 @@ ${'<'}/script>
                     </div>
                   </>
                 ) : (
-                  <p className="element-edit-meta">Turn on edit mode, then hold Ctrl and click any heading, button, paragraph, image, or container inside the iframe.</p>
+                  <p className="element-edit-meta">Turn on edit mode, then hold Ctrl or Cmd and click any heading, button, paragraph, image, or container inside the iframe.</p>
                 )}
               </div>
             )}

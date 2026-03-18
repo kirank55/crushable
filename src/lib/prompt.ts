@@ -46,9 +46,17 @@ NAVBAR & STICKY HEADERS:
 - Hero sections that follow a sticky/fixed navbar MUST include pt-16 top padding to prevent content from being hidden behind the navbar.
 - Navbar links should use anchor hrefs (e.g. href="#features", href="#pricing") that match section IDs.
 
+HERO LAYOUT REVIEW:
+- Do NOT default hero sections to centered content. Choose left-aligned, centered, or split layouts based on what best balances the composition.
+- Do NOT use min-h-screen, min-h-[100vh], or inline 100vh height unless the hero truly needs full-viewport treatment.
+- If a hero uses viewport-height sizing, the layout MUST stay visually balanced with intentional vertical alignment so the content does not appear stranded at the top or leave large empty space.
+- Review hero sections for awkward empty space, misaligned media, floating badges, and unbalanced columns before returning the final HTML.
+- If the hero looks odd during that review, fix the spacing, height, alignment, or media placement before you return the section.
+
 SMOOTH SCROLL & SECTION IDS:
 - Add scroll-behavior: smooth to the <html> element style.
 - Every section MUST have a meaningful id attribute matching its purpose (e.g. id="hero", id="features", id="pricing", id="testimonials", id="contact", id="footer").
+- The root id and data-block-id for each section must stay aligned and unique across the full page. Never reuse the same root section id for different sections.
 - Navbar anchor links must match these IDs exactly so clicking a nav link scrolls to that section.
 
 SECTION BACKGROUNDS:
@@ -78,7 +86,12 @@ WHEN CREATING NEW:
 You receive a description of what to build.
 Return a complete new <section> with the described content.
 Generate a meaningful data-block-id attribute value (e.g., "hero", "features", "pricing").
-In the SUMMARY, describe what you created.`;
+In the SUMMARY, describe what you created.
+
+FINAL SELF-REVIEW BEFORE RETURNING HTML:
+- Check the section as a composed design, not just a list of elements.
+- Fix any obvious layout mistakes such as awkward whitespace, broken hierarchy, low-contrast text, cramped cards, or unbalanced columns.
+- For hero sections especially, review spacing, height, alignment, and media placement one more time before finalizing.`;
 }
 
 export function buildEditPrompt(blockHtml: string, userRequest: string, blockId: string): string {
@@ -96,6 +109,116 @@ export function buildNewPrompt(userRequest: string): string {
 ${userRequest}
 
 Create a complete new <section> with the described content. Include a meaningful data-block-id attribute. Return using the exact format with ---SUMMARY--- and ---HTML--- sections.`;
+}
+
+export function buildTemplateFillPrompt(
+    skeleton: string,
+    projectContext: string,
+    sectionRole: string,
+): string {
+    return `You are filling a landing page section template with conversion-focused content.
+
+SECTION ROLE:
+${sectionRole}
+
+PROJECT CONTEXT:
+${projectContext}
+
+TEMPLATE SKELETON:
+${skeleton}
+
+Return ONLY a JSON object where each key matches a {{placeholder}} token from the template and each value contains the replacement HTML-safe content.
+
+Rules:
+- Return JSON only.
+- Do not return the template itself.
+- For list-like placeholders, return fully rendered HTML snippets that can be inserted directly.
+- Keep copy specific to the product context and section role.`;
+}
+
+export function buildTemplateSelectionPrompt(
+    sections: string[],
+    templateCatalog: string,
+    designStyle?: string,
+): string {
+    return `Select the best template ID for each planned landing page section.
+
+PLANNED SECTIONS:
+${sections.map((section, index) => `${index + 1}. ${section}`).join('\n')}
+
+DESIGN STYLE:
+${designStyle || 'professional'}
+
+AVAILABLE TEMPLATES:
+${templateCatalog}
+
+Return ONLY a JSON object where each key is the section title and each value is the best template ID.
+If no template is a strong match, omit that section.`;
+}
+
+export function buildCompositionPrompt(
+    componentCatalog: string,
+    projectContext: string,
+    sectionPlan: string[],
+): string {
+    return `You are composing a landing page from a component library.
+
+PROJECT CONTEXT:
+${projectContext}
+
+SECTION PLAN:
+${sectionPlan.map((section, index) => `${index + 1}. ${section}`).join('\n')}
+
+COMPONENT LIBRARY:
+${componentCatalog}
+
+Return ONLY a JSON array. Each item must have:
+- componentId
+- props (an object of strings or string arrays)
+
+The array order must match the section plan.`;
+}
+
+export function buildPatchEditPrompt(blockHtml: string, userRequest: string): string {
+    return `You are generating a surgical JSON patch for an existing landing page section.
+
+CURRENT SECTION HTML:
+${blockHtml}
+
+USER REQUEST:
+${userRequest}
+
+Return ONLY JSON in this shape:
+{
+  "ops": [
+    { "type": "replace", "selector": "h2", "oldText": "Old", "newText": "New" },
+    { "type": "addClass", "selector": "a", "classes": "bg-blue-600" }
+  ]
+}
+
+Allowed op types: replace, setAttribute, addClass, removeClass, insertAfter, insertBefore, remove.
+Use CSS selectors scoped to the provided section only. Do not return HTML.`;
+}
+
+export function buildCritiquePrompt(sectionHtml: string, sectionRole: string, designStyle: string): string {
+    return `You are critiquing a landing page section before launch.
+
+SECTION ROLE:
+${sectionRole}
+
+DESIGN STYLE:
+${designStyle}
+
+SECTION HTML:
+${sectionHtml}
+
+Return ONLY JSON with these keys:
+- visualAppeal (1-10)
+- copyQuality (1-10)
+- conversionPotential (1-10)
+- mobileReadiness (1-10)
+- issues (array of short strings)
+- suggestedPrompt (one concise edit prompt that would improve the section)`;
 }
 
 export function getElementEditSystemPrompt(designStylePrompt?: string, projectContext?: string): string {
@@ -220,6 +343,26 @@ Rules:
 
 Product description:
 ${productDescription}`;
+}
+
+export function parseJsonObjectResponse<T>(response: string): T | null {
+    try {
+        const match = response.match(/\{[\s\S]*\}/);
+        if (!match) return null;
+        return JSON.parse(match[0]) as T;
+    } catch {
+        return null;
+    }
+}
+
+export function parseJsonArrayResponse<T>(response: string): T[] | null {
+    try {
+        const match = response.match(/\[[\s\S]*\]/);
+        if (!match) return null;
+        return JSON.parse(match[0]) as T[];
+    } catch {
+        return null;
+    }
 }
 
 /**

@@ -8,6 +8,11 @@ import {
     buildPlanPrompt,
     buildDetailedPlanPrompt,
     buildElementEditPrompt,
+    buildTemplateFillPrompt,
+    buildTemplateSelectionPrompt,
+    buildCompositionPrompt,
+    buildPatchEditPrompt,
+    buildCritiquePrompt,
     buildValidationPrompt,
     buildStyleSelectPrompt,
 } from '@/lib/prompt';
@@ -17,11 +22,29 @@ import { logger } from '@/lib/logger';
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
-        const { prompt, currentHtml, blockId, mode, apiKey, model, designStylePrompt, projectContext, planDetails, fullHtml } = body;
+        const {
+            prompt,
+            currentHtml,
+            blockId,
+            mode,
+            apiKey,
+            model,
+            designStylePrompt,
+            projectContext,
+            planDetails,
+            fullHtml,
+            templateSkeleton,
+            sectionRole,
+            templateCatalog,
+            sections,
+            componentCatalog,
+            sectionPlan,
+            designStyle,
+        } = body;
 
         logger.api('/api/generate', { mode, model, hasApiKey: !!apiKey, blockId: blockId || null, hasDesignStyle: !!designStylePrompt, hasProjectContext: !!projectContext });
 
-        if (!prompt && mode !== 'detailed-plan' && mode !== 'validate') {
+        if (!prompt && !['detailed-plan', 'validate', 'fill-template', 'select-templates', 'compose', 'patch-edit', 'critique'].includes(mode || '')) {
             logger.error('/api/generate', 'Missing prompt');
             return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
         }
@@ -71,6 +94,26 @@ export async function POST(req: NextRequest) {
             systemPrompt = 'You select the most appropriate design style ID for a product description. Return only one valid style ID.';
             userPrompt = buildStyleSelectPrompt(prompt);
             logger.info('Style selection mode');
+        } else if (mode === 'fill-template' && templateSkeleton && sectionRole) {
+            systemPrompt = 'You are a conversion copywriter. Return only JSON placeholder values for the provided landing page template. Do not return HTML or markdown.';
+            userPrompt = buildTemplateFillPrompt(templateSkeleton, projectContext || prompt || '', sectionRole);
+            logger.info('Template fill mode', { sectionRole });
+        } else if (mode === 'select-templates' && Array.isArray(sections) && templateCatalog) {
+            systemPrompt = 'You map landing page sections to the best template IDs. Return only JSON.';
+            userPrompt = buildTemplateSelectionPrompt(sections, templateCatalog, designStyle || undefined);
+            logger.info('Template selection mode', { sectionCount: sections.length });
+        } else if (mode === 'compose' && componentCatalog && Array.isArray(sectionPlan)) {
+            systemPrompt = 'You compose landing pages from a component library. Return only JSON array data.';
+            userPrompt = buildCompositionPrompt(componentCatalog, projectContext || prompt || '', sectionPlan);
+            logger.info('Component composition mode', { sectionCount: sectionPlan.length });
+        } else if (mode === 'patch-edit' && currentHtml) {
+            systemPrompt = 'You generate precise JSON patches for a landing page section. Return only JSON with valid patch operations.';
+            userPrompt = buildPatchEditPrompt(currentHtml, prompt || 'Apply the requested edit.');
+            logger.info('Patch edit mode', { blockId, currentHtmlLength: currentHtml.length });
+        } else if (mode === 'critique' && currentHtml && sectionRole) {
+            systemPrompt = 'You critique landing page sections and return only JSON scores and improvement guidance.';
+            userPrompt = buildCritiquePrompt(currentHtml, sectionRole, designStyle || 'professional');
+            logger.info('Critique mode', { blockId, sectionRole });
         } else if (mode === 'validate') {
             systemPrompt = 'You review landing page HTML and identify structural and UX issues. Return concise plain text findings.';
             userPrompt = buildValidationPrompt(fullHtml || prompt || '');

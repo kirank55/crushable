@@ -36,9 +36,19 @@ export interface Message {
   timestamp?: number;
 }
 
+export type GenerationStrategy =
+  | 'hybrid'
+  | 'template-first'
+  | 'component-first'
+  | 'html-only';
+
+export type RefinementLevel = 'off' | 'light' | 'full';
+
 export interface Settings {
   apiKey: string;
   model: string;
+  generationStrategy: GenerationStrategy;
+  refinementLevel: RefinementLevel;
 }
 
 export interface ModelInfo {
@@ -55,8 +65,130 @@ export interface DesignStyle {
   prompt: string;
 }
 
+export interface ValidationIssue {
+  type: 'error' | 'warning';
+  code:
+    | 'duplicate-navigation'
+    | 'duplicate-id'
+    | 'duplicate-block-id'
+    | 'broken-anchor'
+    | 'missing-image-source'
+    | 'missing-background'
+    | 'hero-balance'
+    | 'social-proof-layout'
+    | 'missing-smooth-scroll';
+  message: string;
+  blockId?: string;
+  targetId?: string;
+  href?: string;
+}
+
+export interface SectionTemplate {
+  id: string;
+  name: string;
+  category: string;
+  variant: string;
+  description: string;
+  designStyles: string[];
+  placeholders: string[];
+  skeleton: string;
+  componentId?: string;
+}
+
+export interface TemplateSelection {
+  sectionTitle: string;
+  templateId: string;
+}
+
+export interface PlannedSectionLike {
+  title: string;
+  id: string;
+  details?: string;
+}
+
+export interface ExampleReference {
+  id: string;
+  industry: string;
+  sectionType: string;
+  designStyle: string;
+  tags: string[];
+  description: string;
+  html: string;
+}
+
+export interface RAGQuery {
+  industry?: string;
+  sectionType: string;
+  designStyle: string;
+  keywords?: string[];
+}
+
+export type ComponentPropType =
+  | 'text'
+  | 'richtext'
+  | 'image'
+  | 'list'
+  | 'color'
+  | 'link';
+
+export interface ComponentPropDefinition {
+  name: string;
+  type: ComponentPropType;
+  required: boolean;
+  default?: string;
+}
+
+export type ComponentProps = Record<string, string | string[]>;
+
+export interface ComponentDefinition {
+  id: string;
+  name: string;
+  category: string;
+  variants: string[];
+  description: string;
+  props: ComponentPropDefinition[];
+  render: (props: ComponentProps) => string;
+}
+
+export interface ComponentSummary {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  variants: string[];
+}
+
+export interface ComponentManifestItem {
+  componentId: string;
+  props: ComponentProps;
+}
+
+export type PatchOp =
+  | { type: 'replace'; selector: string; oldText?: string; newText: string }
+  | { type: 'setAttribute'; selector: string; attr: string; value: string }
+  | { type: 'addClass'; selector: string; classes: string }
+  | { type: 'removeClass'; selector: string; classes: string }
+  | { type: 'insertAfter'; selector: string; html: string }
+  | { type: 'insertBefore'; selector: string; html: string }
+  | { type: 'remove'; selector: string };
+
+export interface HtmlPatch {
+  ops: PatchOp[];
+}
+
+export interface SectionCritique {
+  visualAppeal: number;
+  copyQuality: number;
+  conversionPotential: number;
+  mobileReadiness: number;
+  issues: string[];
+  suggestedPrompt: string;
+}
+
 export const FREE_AUTO_MODEL = 'auto:free';
 export const FREE_MODEL = 'auto:free';
+export const DEFAULT_GENERATION_STRATEGY: GenerationStrategy = 'hybrid';
+export const DEFAULT_REFINEMENT_LEVEL: RefinementLevel = 'light';
 
 const DEFAULT_MODELS: ModelInfo[] = [
   { id: 'auto:free', label: 'Free Model', free: true },

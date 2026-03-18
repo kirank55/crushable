@@ -41,7 +41,6 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
         clearSelection,
         reorderBlocks,
         handleSave,
-        handleNew,
         handleRename,
         clearAll,
         createVersionSnapshot,
@@ -78,10 +77,92 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
     const [versionsOpen, setVersionsOpen] = useState(false);
     const [chatVisible, setChatVisible] = useState(true);
     const [mobilePreview, setMobilePreview] = useState(false);
-    const [chatResetKey, setChatResetKey] = useState(0);
+    const chatResetKey = 0;
     const [viewMode, setViewMode] = useState<'preview' | 'code' | 'console'>('preview');
     const [helpOpen, setHelpOpen] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
+    const [editMode, setEditMode] = useState(false);
+    const lastAutoProjectNameRef = useRef<string | null>(null);
+
+    const deriveProjectName = useCallback((details: ProjectDetails) => {
+        const brandName = details.brandName?.trim();
+        if (brandName) return brandName;
+
+        const heroTitle = details.title?.trim();
+        if (heroTitle) return heroTitle;
+
+        const description = details.productDescription?.trim();
+        if (!description) return '';
+
+        const stopWords = new Set([
+            'a', 'an', 'and', 'are', 'as', 'at', 'be', 'build', 'for', 'from',
+            'in', 'into', 'is', 'of', 'on', 'or', 'platform', 'product', 'that',
+            'the', 'this', 'to', 'tool', 'with', 'your',
+        ]);
+
+        const tokens = description
+            .toLowerCase()
+            .replace(/[^a-z0-9\s-]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .split(' ')
+            .filter((token) => token.length > 2 && !stopWords.has(token));
+
+        const uniqueTokens = Array.from(new Set(tokens));
+        const coreName = uniqueTokens.slice(0, 3);
+
+        if (coreName.length === 0) {
+            return 'Untitled Project';
+        }
+
+        return coreName
+            .map((token) => token.charAt(0).toUpperCase() + token.slice(1))
+            .join(' ');
+    }, []);
+
+    const extractProjectNameFromBlocks = useCallback((nextBlocks: typeof blocks) => {
+        if (typeof window === 'undefined') return null;
+
+        const navigationLikeBlocks = nextBlocks.filter((block) =>
+            /home|nav|navigation|header/i.test(block.id) ||
+            /nav|navigation|header/i.test(block.label),
+        );
+        const candidateBlocks = navigationLikeBlocks.length > 0 ? navigationLikeBlocks : nextBlocks;
+        const ignoredLabels = new Set([
+            'home',
+            'features',
+            'pricing',
+            'testimonials',
+            'faq',
+            'contact',
+            'about',
+            'login',
+            'sign in',
+            'sign up',
+            'get started',
+            'start free',
+            'book demo',
+            'docs',
+        ]);
+
+        for (const block of candidateBlocks) {
+            const documentFragment = new DOMParser().parseFromString(block.html, 'text/html');
+            const candidates = Array.from(
+                documentFragment.body.querySelectorAll('a, strong, span, div, p'),
+            );
+
+            for (const node of candidates) {
+                const text = (node.textContent || '').replace(/\s+/g, ' ').trim();
+                if (!text || text.length < 2 || text.length > 32) continue;
+                if (ignoredLabels.has(text.toLowerCase())) continue;
+                if (/[#/]/.test(text)) continue;
+                if (text.split(' ').length > 4) continue;
+                return text;
+            }
+        }
+
+        return null;
+    }, []);
 
     const handlePreviewSelect = useCallback((blockId: string) => {
         setChatVisible(true);
@@ -171,15 +252,6 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
         selectBlock(blockId);
     }, [blocks, createVersionSnapshot, designStylePrompt, projectContext, selectBlock, updateBlock]);
 
-    const handleNewProject = useCallback(() => {
-        handleNew();
-        setChatResetKey(prev => prev + 1);
-        setChatVisible(true);
-        setProjectDetails({});
-        logger.action('New project + chat reset');
-        router.push('/project/new');
-    }, [handleNew, router]);
-
     const handleBackToProjects = useCallback(() => {
         if (isDirty) {
             const shouldSave = window.confirm('You have unsaved changes. Press OK to save before leaving.');
@@ -233,10 +305,28 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
     const handleSetProjectDetails = useCallback((details: ProjectDetails) => {
         logger.action('Project details set', details);
         setProjectDetails(details);
-        if (details.brandName) {
-            handleRename(details.brandName);
+        const nextProjectName = deriveProjectName(details);
+        if (nextProjectName) {
+            lastAutoProjectNameRef.current = nextProjectName;
+            handleRename(nextProjectName);
         }
-    }, [handleRename]);
+    }, [deriveProjectName, handleRename]);
+
+    useEffect(() => {
+        if (blocks.length === 0) return;
+
+        const generatedProjectName = extractProjectNameFromBlocks(blocks);
+        if (!generatedProjectName) return;
+
+        const canAutoRename =
+            projectName === 'Untitled Project' ||
+            projectName === lastAutoProjectNameRef.current;
+
+        if (!canAutoRename || projectName === generatedProjectName) return;
+
+        lastAutoProjectNameRef.current = generatedProjectName;
+        handleRename(generatedProjectName);
+    }, [blocks, extractProjectNameFromBlocks, handleRename, projectName]);
 
     useEffect(() => {
         if (!isReady || id !== 'new' || !templateId || templateAppliedRef.current || blocks.length > 0) {
@@ -279,8 +369,6 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
                 onRename={handleRename}
                 onOpenSettings={() => setSettingsOpen(true)}
                 onOpenProjects={handleBackToProjects}
-                onNewProject={handleNewProject}
-                onClearAll={clearAll}
                 onImportBlocks={importBlocks}
                 onOpenVersions={() => setVersionsOpen(true)}
                 onHideChat={() => setChatVisible(false)}
@@ -290,6 +378,11 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
                 chatVisible={chatVisible}
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
+                mobilePreview={mobilePreview}
+                editMode={editMode}
+                onEditModeChange={setEditMode}
+                onRefreshPreview={() => setRefreshKey((value) => value + 1)}
+                onPreviewModeChange={setMobilePreview}
             />
 
             <div className="builder-main">
@@ -322,11 +415,9 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
                         designStyle={designStyle}
                         selectedBlockId={selectedBlockId}
                         viewMode={viewMode}
-                        projectName={projectName}
                         refreshKey={refreshKey}
+                        editMode={editMode}
                         onSelectBlock={handlePreviewSelect}
-                        onRefresh={() => setRefreshKey((value) => value + 1)}
-                        onPreviewModeChange={setMobilePreview}
                         onElementEdit={handleElementEdit}
                         onCodeSave={(editedHtml) => {
                             // Parse the edited HTML back into individual section blocks

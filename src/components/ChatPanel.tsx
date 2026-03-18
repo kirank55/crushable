@@ -38,8 +38,6 @@ import {
   Square,
   RotateCcw,
   Pencil,
-  Save,
-  X,
   Plus,
   Cpu,
 } from "lucide-react";
@@ -288,6 +286,14 @@ function shouldShowRestoreButton(
   return looksLikeDiff(nextMessage.content);
 }
 
+function isSyntheticSetupMessage(content: string): boolean {
+  return (
+    content === "Proceed with landing page plan" ||
+    content === "User clicked on Generate Landing Page" ||
+    content === "Continue"
+  );
+}
+
 function isExplanationIntent(prompt: string): boolean {
   const patterns = [
     /\bexplain\s+(the\s+)?(previous|last|recent)\s+(change|edit|update)\b/i,
@@ -359,9 +365,7 @@ function buildPreviousChangeExplanation(messages: Message[]): string | null {
       .find(
         (message) =>
           message.role === "user" &&
-          message.content !== "Proceed with landing page plan" &&
-          message.content !== "User clicked on Generate Landing Page" &&
-          message.content !== "Continue" &&
+          !isSyntheticSetupMessage(message.content) &&
           !isExplanationIntent(message.content),
       );
 
@@ -411,9 +415,6 @@ export default function ChatPanel({
   const [expandedMessages, setExpandedMessages] = useState<Set<string>>(
     new Set(),
   );
-  const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
-  const [planDraft, setPlanDraft] = useState("");
-  const [usedPlanIds, setUsedPlanIds] = useState<Set<string>>(new Set());
   const [setupPhase, setSetupPhase] = useState<"details" | "ready">(
     designStyle ? "ready" : "details",
   );
@@ -429,11 +430,12 @@ export default function ChatPanel({
 
   const selectedBlock = blocks.find((b) => b.id === selectedBlockId);
   const selectedStyle = DESIGN_STYLES.find((style) => style.id === designStyle);
+  const currentModel = getModel();
+  const isUsingFreeModel =
+    currentModel === "auto:free" || currentModel.endsWith(":free");
   useEffect(() => {
     setMessages(initialMessages || []);
     setExpandedMessages(new Set());
-    setEditingPlanId(null);
-    setPlanDraft("");
     lastPersistedMessageIdsRef.current = "";
     lastPersistedMessageSignatureRef.current = "";
     setSetupPhase(designStyle ? "ready" : "details");
@@ -906,11 +908,15 @@ export default function ChatPanel({
 
   async function generateLandingPageFromDetails(resolvedStyleId?: string) {
     if (isLoading) return;
+    const initialPrompt =
+      setupDetails.productDescription?.trim() ||
+      setupDetails.title?.trim() ||
+      "Continue";
 
     const userMessage: Message = {
       id: uuidv4(),
       role: "user",
-      content: "Continue",
+      content: initialPrompt,
       blocksSnapshot: blocks.map((block) => ({ ...block })),
       timestamp: Date.now(),
     };
@@ -985,18 +991,11 @@ export default function ChatPanel({
             ? {
                 ...message,
                 id: planMessageId,
-                summary: "Detailed landing page plan ready",
                 plan: planContent,
               }
             : message,
         ),
       );
-      setUsedPlanIds((prev) => {
-        const next = new Set(prev);
-        next.add(planMessageId);
-        return next;
-      });
-
       const plannedSections = extractDetailedPlanSections(planContent);
       if (plannedSections.length === 0) {
         throw new Error("Detailed plan did not contain recognizable sections.");
@@ -1030,7 +1029,7 @@ export default function ChatPanel({
             : message,
         ),
       );
-      onVersionCreated("Continue");
+      onVersionCreated(initialPrompt);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         logger.action("Landing page generation cancelled by user");
@@ -1140,13 +1139,13 @@ export default function ChatPanel({
           id: trackerId,
           role: "assistant",
           content: "",
-          summary: `Parallel generation started. ${formatParallelProgress(progressStates)}`,
+          summary: `Parallel generation started.\n${formatParallelProgress(progressStates)}`,
           timestamp: Date.now(),
         },
       ]);
 
       const updateTracker = () => {
-        const trackerSummary = `Parallel generation in progress. ${formatParallelProgress(progressStates)}`;
+        const trackerSummary = `Generation in progress.\n${formatParallelProgress(progressStates)}`;
         setMessages((prev) =>
           prev.map((message) =>
             message.id === trackerId
@@ -1242,7 +1241,7 @@ export default function ChatPanel({
           message.id === trackerId
             ? {
                 ...message,
-                summary: `Parallel generation complete. ${formatParallelProgress(progressStates)}`,
+                summary: `Parallel generation complete.\n${formatParallelProgress(progressStates)}`,
               }
             : message,
         ),
@@ -1664,26 +1663,6 @@ export default function ChatPanel({
     setShowSelectDropdown(false);
   };
 
-  const handlePlanEditStart = (message: Message) => {
-    setEditingPlanId(message.id);
-    setPlanDraft(message.plan || "");
-  };
-
-  const handlePlanEditCancel = () => {
-    setEditingPlanId(null);
-    setPlanDraft("");
-  };
-
-  const handlePlanEditSave = (messageId: string) => {
-    setMessages((prev) =>
-      prev.map((message) =>
-        message.id === messageId ? { ...message, plan: planDraft } : message,
-      ),
-    );
-    setEditingPlanId(null);
-    setPlanDraft("");
-  };
-
   const renderLoadingStatus = () => {
     switch (loadingStatus.phase) {
       case "requesting":
@@ -1883,6 +1862,16 @@ export default function ChatPanel({
           const isCurrentlyStreaming =
             isLoading && messages[messages.length - 1]?.id === message.id;
           const hasDiff = looksLikeDiff(message.content);
+          const shouldHideAssistantMessage =
+            message.role === "assistant" &&
+            (Boolean(message.plan) ||
+              (!isCurrentlyStreaming &&
+                !message.content &&
+                !message.summary));
+
+          if (shouldHideAssistantMessage) {
+            return null;
+          }
 
           return (
             <div key={message.id} className={`chat-message ${message.role}`}>
@@ -1926,8 +1915,8 @@ export default function ChatPanel({
                 ) : (
                   <div className="assistant-response">
                     {message.plan ? (
-                      <div className="assistant-plan-card">
-                        <div className="assistant-plan-header">
+                      <>
+                        {/* <div className="assistant-plan-header">
                           <div className="assistant-plan-heading">
                             <span className="assistant-plan-label">
                               Landing Page Plan
@@ -1985,8 +1974,8 @@ export default function ChatPanel({
                               Edit
                             </button>
                           </div>
-                        )}
-                      </div>
+                        )} */}
+                      </>
                     ) : message.content ? (
                       <div className="assistant-result">
                         <div className="result-summary">
@@ -2130,11 +2119,18 @@ export default function ChatPanel({
             rows={2}
             disabled={isLoading}
           />
+                        {isUsingFreeModel && (
+              <p className="model-warning-inline">
+                you are using free models which can be slow unexpectedly. please be patient
+              </p>
+            )}
           <div className="input-actions">
+
             <button onClick={onOpenSettings} className="model-badge-btn" title="Model">
               <Cpu size={12} />
               Model
             </button>
+
             <div className="select-block-wrapper" ref={selectDropdownRef}>
               <button
                 onClick={() => setShowSelectDropdown(!showSelectDropdown)}

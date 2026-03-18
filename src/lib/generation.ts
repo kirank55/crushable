@@ -96,12 +96,12 @@ export function formatParallelProgress(states: Array<{ title: string; status: 'p
     .map((state) => {
       const prefix =
         state.status === "done"
-          ? "✓"
+          ? "\n ✓"
           : state.status === "running"
-            ? "⟳"
+            ? "\n ⟳"
             : state.status === "error"
-              ? "!"
-              : "•";
+              ? "\n !"
+              : "\n •";
       return `${prefix} ${state.title}`;
     })
     .join("  ");

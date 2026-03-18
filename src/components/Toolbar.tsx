@@ -6,8 +6,6 @@ import {
   Save,
   Settings,
   ArrowLeft,
-  Plus,
-  Trash2,
   Check,
   Upload,
   History,
@@ -18,6 +16,10 @@ import {
   Terminal,
   HelpCircle,
   ExternalLink,
+  Sparkles,
+  RefreshCw,
+  Monitor,
+  Smartphone,
 } from "lucide-react";
 import { downloadHTML } from "@/lib/export";
 import { getApiKey, getModel } from "@/lib/storage";
@@ -72,8 +74,6 @@ interface ToolbarProps {
   onRename: (name: string) => void;
   onOpenSettings: () => void;
   onOpenProjects: () => void;
-  onNewProject: () => void;
-  onClearAll: () => void;
   onImportBlocks: (blocks: Block[]) => void;
   onOpenVersions?: () => void;
   onHideChat?: () => void;
@@ -83,6 +83,11 @@ interface ToolbarProps {
   chatVisible?: boolean;
   viewMode?: "preview" | "code" | "console";
   onViewModeChange?: (mode: "preview" | "code" | "console") => void;
+  mobilePreview?: boolean;
+  editMode?: boolean;
+  onEditModeChange?: (value: boolean) => void;
+  onRefreshPreview?: () => void;
+  onPreviewModeChange?: (mobile: boolean) => void;
 }
 
 export default function Toolbar({
@@ -93,8 +98,6 @@ export default function Toolbar({
   onRename,
   onOpenSettings,
   onOpenProjects,
-  onNewProject,
-  onClearAll,
   onImportBlocks,
   onOpenVersions,
   onHideChat,
@@ -104,6 +107,11 @@ export default function Toolbar({
   chatVisible,
   viewMode,
   onViewModeChange,
+  mobilePreview = false,
+  editMode = false,
+  onEditModeChange,
+  onRefreshPreview,
+  onPreviewModeChange,
 }: ToolbarProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(projectName);
@@ -159,15 +167,6 @@ export default function Toolbar({
 
   const handleBackToProjects = () => {
     onOpenProjects();
-  };
-
-  const handleClearAll = () => {
-    if (blocks.length === 0) return;
-
-    const confirmed = window.confirm("Clear all sections from this project?");
-    if (!confirmed) return;
-
-    onClearAll();
   };
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -310,6 +309,44 @@ export default function Toolbar({
 
       <div className="toolbar-right">
         <div className="toolbar-utility-group">
+          {viewMode === "preview" && (
+            <>
+              <button
+                onClick={() => onEditModeChange?.(!editMode)}
+                className={`toolbar-btn ${editMode ? "active-toolbar-btn" : ""}`}
+                title="Toggle element edit mode"
+              >
+                <Sparkles size={16} />
+                <span className="btn-label">{editMode ? "Edit mode on" : "Edit mode"}</span>
+              </button>
+              <button
+                onClick={onRefreshPreview}
+                className="toolbar-btn"
+                title="Refresh preview"
+              >
+                <RefreshCw size={16} />
+                <span className="btn-label">Refresh</span>
+              </button>
+              {/* <div className="toolbar-preview-toggle" role="group" aria-label="Preview viewport"> */}
+                <button
+                  onClick={() => onPreviewModeChange?.(false)}
+                  className={`toolbar-btn ${!mobilePreview ? "active-toolbar-btn" : ""}`}
+                  title="Desktop preview"
+                >
+                  <Monitor size={16} />
+                  <span className="btn-label">Desktop</span>
+                </button>
+                <button
+                  onClick={() => onPreviewModeChange?.(true)}
+                  className={`toolbar-btn ${mobilePreview ? "active-toolbar-btn" : ""}`}
+                  title="Mobile preview"
+                >
+                  <Smartphone size={16} />
+                  <span className="btn-label">Mobile</span>
+                </button>
+              {/* </div> */}
+            </>
+          )}
           {onOpenInNewTab && (
             <button
               onClick={onOpenInNewTab}
@@ -320,26 +357,6 @@ export default function Toolbar({
               <span className="btn-label">Preview in new tab</span>
             </button>
           )}
-
-          {/* <button
-            onClick={onNewProject}
-            className="toolbar-btn"
-            title="New Project"
-          >
-            <Plus size={18} />
-            <span className="btn-label">New</span>
-          </button> */}
-
-          {/* <button
-            onClick={handleClearAll}
-            className="toolbar-btn"
-            title="Clear All"
-            disabled={blocks.length === 0}
-          >
-            <Trash2 size={18} />
-            <span className="btn-label">Clear</span>
-          </button> */}
-
           <input
             ref={fileInputRef}
             type="file"

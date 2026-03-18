@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Block } from '@/types';
-import { Copy, Check, Pencil, Save, X, Globe, Monitor, Smartphone, RefreshCw, Sparkles } from 'lucide-react';
+import { Copy, Check, Pencil, Save, X } from 'lucide-react';
 
 interface ConsoleLine {
   type: 'log' | 'warn' | 'error' | 'info';
@@ -16,11 +16,9 @@ interface PreviewPanelProps {
   designStyle?: string;
   selectedBlockId?: string | null;
   viewMode: 'preview' | 'code' | 'console';
-  projectName: string;
   refreshKey: number;
+  editMode: boolean;
   onSelectBlock?: (blockId: string) => void;
-  onRefresh?: () => void;
-  onPreviewModeChange?: (mobile: boolean) => void;
   onElementEdit?: (blockId: string, elementSelector: string, instruction: string) => Promise<void> | void;
   onCodeSave?: (sectionsHtml: string) => void;
 }
@@ -47,11 +45,9 @@ export default function PreviewPanel({
   designStyle,
   selectedBlockId,
   viewMode,
-  projectName,
   refreshKey,
+  editMode,
   onSelectBlock,
-  onRefresh,
-  onPreviewModeChange,
   onElementEdit,
   onCodeSave,
 }: PreviewPanelProps) {
@@ -65,7 +61,6 @@ export default function PreviewPanel({
   const editRef = useRef<HTMLTextAreaElement>(null);
   const editHighlightRef = useRef<HTMLPreElement>(null);
   const [codeCopied, setCodeCopied] = useState(false);
-  const [editMode, setEditMode] = useState(false);
   const [selectedElement, setSelectedElement] = useState<SelectedElementState | null>(null);
   const [elementInstruction, setElementInstruction] = useState('');
   const [elementEditError, setElementEditError] = useState<string | null>(null);
@@ -75,16 +70,6 @@ export default function PreviewPanel({
     () => blocks.filter((block) => block.visible !== false),
     [blocks]
   );
-
-  const previewUrl = useMemo(() => {
-    const slug = projectName
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
-
-    return `${slug || 'your-project'}.crushable.dev`;
-  }, [projectName]);
 
   const selectedBlockHtml = useMemo(
     () => blocks.find((block) => block.id === selectedBlockId)?.html ?? '',
@@ -658,7 +643,7 @@ ${'<'}/script>
       {viewMode === 'preview' ? (
         <div className={`preview-container ${mobilePreview ? 'mobile' : ''}`}>
           <div className={`preview-stage ${mobilePreview ? 'mobile' : 'desktop'}`}>
-            <div className="preview-url-bar">
+            {/* <div className="preview-url-bar">
               <div className="preview-url-shell">
                 <div className="preview-url-brand" aria-hidden="true">
                   <span className="preview-window-dot red" />
@@ -670,40 +655,7 @@ ${'<'}/script>
                   <span>{previewUrl}</span>
                 </div>
               </div>
-              <div className="preview-url-actions">
-                <button
-                  type="button"
-                  className={`preview-url-btn ${editMode ? 'active' : ''}`}
-                  onClick={() => setEditMode((value) => !value)}
-                  title="Toggle element edit mode"
-                >
-                  <Sparkles size={14} />
-                  <span>{editMode ? 'Edit mode on' : 'Edit mode'}</span>
-                </button>
-                <button type="button" className="preview-url-btn" onClick={onRefresh} title="Refresh preview">
-                  <RefreshCw size={14} />
-                  <span>Refresh</span>
-                </button>
-                <div className="preview-responsive-toggle" role="group" aria-label="Preview viewport">
-                  <button
-                    type="button"
-                    className={`preview-url-btn ${!mobilePreview ? 'active' : ''}`}
-                    onClick={() => onPreviewModeChange?.(false)}
-                    title="Desktop preview"
-                  >
-                    <Monitor size={14} />
-                  </button>
-                  <button
-                    type="button"
-                    className={`preview-url-btn ${mobilePreview ? 'active' : ''}`}
-                    onClick={() => onPreviewModeChange?.(true)}
-                    title="Mobile preview"
-                  >
-                    <Smartphone size={14} />
-                  </button>
-                </div>
-              </div>
-            </div>
+            </div> */}
             {(editMode || selectedElement) && (
               <div className="element-edit-panel">
                 <div className="element-edit-header">

@@ -37,13 +37,13 @@ export default function HomePage() {
             <Layers3 size={28} strokeWidth={1.5} />
             <h1>Crushable</h1>
           </div>
-          <p className="project-fullscreen-sub">AI page builder for polished multi-page projects</p>
+          <p className="project-fullscreen-sub">AI landing page builder</p>
         </div>
 
         <div className="project-hero">
           <div className="project-hero-copy">
             <span className="project-hero-eyebrow">AI project builder</span>
-            <h2>Build a polished multi-page project from a single product brief.</h2>
+            <h2>Build a polished landing page from a single product brief.</h2>
             <p>
               Describe what you are building, generate a page plan, refine sections in chat, and
               export clean HTML when it is ready.

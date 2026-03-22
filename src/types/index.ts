@@ -185,6 +185,47 @@ export interface SectionCritique {
   suggestedPrompt: string;
 }
 
+export type ModificationRequestKind =
+  | 'section-edit'
+  | 'element-edit'
+  | 'multi-section-edit'
+  | 'add-section'
+  | 'remove-section'
+  | 'global-style-edit';
+
+export type ModificationExecutorMode =
+  | 'patch'
+  | 'full-html'
+  | 'element-html'
+  | 'remove';
+
+export type ModificationEngineOperation =
+  | { type: 'update-block'; blockId: string; html: string }
+  | { type: 'insert-block'; afterBlockId?: string | null; block: Block }
+  | { type: 'remove-block'; blockId: string }
+  | { type: 'select-block'; blockId: string | null }
+  | { type: 'set-design-style'; designStyle: string };
+
+export interface ModificationEngineRequest {
+  prompt: string;
+  requestKind: ModificationRequestKind;
+  selectedBlockId?: string | null;
+  selectedElementSelector?: string | null;
+  targetBlockIds?: string[];
+  blocks: Block[];
+  designStyle?: string;
+  designStylePrompt?: string;
+  projectContext?: string;
+  apiKey?: string;
+  model?: string;
+}
+
+export interface ModificationEngineResponse {
+  summary: string;
+  executorMode: ModificationExecutorMode;
+  operations: ModificationEngineOperation[];
+}
+
 export const FREE_AUTO_MODEL = 'auto:free';
 export const FREE_MODEL = 'auto:free';
 export const DEFAULT_GENERATION_STRATEGY: GenerationStrategy = 'hybrid';

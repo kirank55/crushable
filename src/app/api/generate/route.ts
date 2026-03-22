@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { streamFromOpenRouter, parseSSEStream } from '@/lib/openrouter';
+import { streamFromOpenRouter, parseSSEStream, resolveOpenRouterApiKey } from '@/lib/openrouter';
 import {
     getSystemPrompt,
     getElementEditSystemPrompt,
@@ -49,19 +49,16 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
         }
 
-        // Use client-provided key if valid, fall back to server env key
-        const envKey = process.env.OPENROUTER_API_KEY || '';
-        const clientKey = apiKey && typeof apiKey === 'string' && apiKey.startsWith('sk-') ? apiKey : '';
-        const resolvedKey = clientKey || envKey;
+        const resolvedApiKey = resolveOpenRouterApiKey(apiKey);
 
         logger.info('API key resolution', {
             clientKeyProvided: !!apiKey,
-            clientKeyValid: !!clientKey,
-            envKeyPresent: !!envKey,
-            usingSource: clientKey ? 'client' : envKey ? 'env' : 'none',
+            clientKeyValid: !!(typeof apiKey === 'string' && apiKey.startsWith('sk-')),
+            envKeyPresent: !!process.env.OPENROUTER_API_KEY,
+            usingSource: resolvedApiKey?.source || 'none',
         });
 
-        if (!resolvedKey) {
+        if (!resolvedApiKey) {
             logger.error('/api/generate', 'No API key configured');
             return NextResponse.json(
                 { error: 'No API key configured. Add your OpenRouter key in Settings (⚙️) or set OPENROUTER_API_KEY in .env.local' },
@@ -138,7 +135,7 @@ export async function POST(req: NextRequest) {
         const rawStream = await streamFromOpenRouter({
             prompt: userPrompt,
             systemPrompt,
-            apiKey: resolvedKey,
+            apiKey: resolvedApiKey.resolvedKey,
             model: model || undefined,
         });
 

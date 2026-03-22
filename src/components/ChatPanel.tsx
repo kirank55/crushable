@@ -7,6 +7,8 @@ import {
   DESIGN_STYLES,
   HtmlPatch,
   Message,
+  ModificationEngineOperation,
+  ModificationEngineResponse,
   SectionCritique,
   ValidationIssue,
 } from "@/types";
@@ -67,6 +69,7 @@ import {
 } from "@/lib/generation";
 import { getComponentSummaries, renderComponentManifestItem } from "@/lib/component-registry";
 import { inferIndustryFromContext, retrieveExamples } from "@/lib/rag";
+import { applyModificationOperationsToBlocks } from "@/lib/modification";
 import { applyPatch, summarizePatch } from "@/lib/patch";
 
 interface ChatPanelProps {
@@ -76,7 +79,9 @@ interface ChatPanelProps {
   isFullScreen: boolean;
   resetKey: number;
   onAddBlock: (block: Block) => void;
+  onInsertBlockAfter: (afterBlockId: string | null | undefined, block: Block) => void;
   onUpdateBlock: (id: string, html: string) => void;
+  onRemoveBlock: (id: string) => void;
   onSelectBlock: (id: string | null) => void;
   onClearSelection: () => void;
   onVersionCreated: (prompt: string) => void;
@@ -205,6 +210,38 @@ function isMultiSectionIntent(prompt: string): boolean {
     /\bmultiple\s+sections\b/i,
   ];
   return patterns.some((p) => p.test(prompt));
+}
+
+function isAddSectionIntent(prompt: string, hasBlocks: boolean): boolean {
+  if (!hasBlocks) return false;
+  const patterns = [
+    /\b(add|create|insert|append|build|generate)\b.*\b(section|block|component)\b/i,
+    /\b(add|create|insert|append|build|generate)\b.*\b(hero|feature|features|pricing|testimonial|testimonials|faq|footer|header|cta|contact|about)\b/i,
+    /\bnew\s+(hero|feature|features|pricing|testimonial|testimonials|faq|footer|header|cta|contact|about)\b/i,
+  ];
+  return patterns.some((pattern) => pattern.test(prompt));
+}
+
+function isRemoveSectionIntent(prompt: string, hasBlocks: boolean): boolean {
+  if (!hasBlocks) return false;
+  const patterns = [
+    /\b(remove|delete)\b.*\b(section|block|component)\b/i,
+    /\b(remove|delete|hide)\b.*\b(hero|feature|features|pricing|testimonial|testimonials|faq|footer|header|cta|contact|about|section)\b/i,
+    /\b(delete|remove|hide)\s+(this|that|the)\s+(section|block)\b/i,
+  ];
+  return patterns.some((pattern) => pattern.test(prompt));
+}
+
+function isGlobalStyleEditIntent(prompt: string, hasBlocks: boolean): boolean {
+  if (!hasBlocks) return false;
+  const patterns = [
+    /\b(make|turn|restyle|redesign|refresh)\b.*\b(page|site|website|landing page)\b/i,
+    /\b(make|turn)\b.*\bmore\b.*\b(elegant|minimal|playful|professional)\b/i,
+    /\bchange\b.*\b(page|site|website)\b.*\bstyle\b/i,
+    /\bpage-wide\b/i,
+    /\bwhole\s+page\b/i,
+  ];
+  return patterns.some((pattern) => pattern.test(prompt));
 }
 
 function getModelLabel(modelId: string): string {
@@ -385,6 +422,41 @@ function buildPreviousChangeExplanation(messages: Message[]): string | null {
   return null;
 }
 
+function buildModificationContent(
+  blocks: Block[],
+  operations: ModificationEngineOperation[],
+): string {
+  const updatedDiffs = operations
+    .filter(
+      (
+        operation,
+      ): operation is Extract<ModificationEngineOperation, { type: "update-block" }> =>
+        operation.type === "update-block",
+    )
+    .map((operation) => {
+      const currentBlock = blocks.find((block) => block.id === operation.blockId);
+      if (!currentBlock) return "";
+      return buildUnifiedDiff(currentBlock.html, operation.html);
+    })
+    .filter(Boolean);
+
+  if (updatedDiffs.length > 0) {
+    return updatedDiffs.join("\n\n");
+  }
+
+  const insertedBlock = operations.find(
+    (
+      operation,
+    ): operation is Extract<ModificationEngineOperation, { type: "insert-block" }> =>
+      operation.type === "insert-block",
+  );
+  if (insertedBlock) {
+    return insertedBlock.block.html;
+  }
+
+  return "";
+}
+
 export default function ChatPanel({
   blocks,
   selectedBlockId,
@@ -392,7 +464,9 @@ export default function ChatPanel({
   isFullScreen,
   resetKey,
   onAddBlock,
+  onInsertBlockAfter,
   onUpdateBlock,
+  onRemoveBlock,
   onSelectBlock,
   onClearSelection,
   onVersionCreated,
@@ -592,6 +666,65 @@ export default function ChatPanel({
       return fullContent;
     },
     [designStyle, designStylePrompt, projectContext],
+  );
+
+  const requestModification = useCallback(
+    async (
+      payload: Omit<
+        Record<string, unknown>,
+        "apiKey" | "model" | "designStylePrompt" | "projectContext" | "designStyle" | "blocks"
+      > & { requestKind: string },
+    ): Promise<ModificationEngineResponse> => {
+      const response = await fetch("/api/modification-engine", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: abortControllerRef.current?.signal,
+        body: JSON.stringify({
+          apiKey: getApiKey(),
+          model: getModel(),
+          designStylePrompt,
+          projectContext,
+          designStyle,
+          blocks,
+          ...payload,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => null);
+        throw new Error(error?.error || "Failed to apply modification");
+      }
+
+      return (await response.json()) as ModificationEngineResponse;
+    },
+    [blocks, designStyle, designStylePrompt, projectContext],
+  );
+
+  const applyModificationOperations = useCallback(
+    (operations: ModificationEngineOperation[]) => {
+      operations.forEach((operation) => {
+        switch (operation.type) {
+          case "update-block":
+            onUpdateBlock(operation.blockId, operation.html);
+            break;
+          case "insert-block":
+            onInsertBlockAfter(operation.afterBlockId, operation.block);
+            break;
+          case "remove-block":
+            onRemoveBlock(operation.blockId);
+            break;
+          case "select-block":
+            onSelectBlock(operation.blockId);
+            break;
+          case "set-design-style":
+            onSetDesignStyle(operation.designStyle);
+            break;
+          default:
+            break;
+        }
+      });
+    },
+    [onInsertBlockAfter, onRemoveBlock, onSelectBlock, onSetDesignStyle, onUpdateBlock],
   );
 
   const getSectionExamples = useCallback(
@@ -1426,6 +1559,19 @@ export default function ChatPanel({
     const mode = currentSelectedBlock ? "edit" : "new";
     const isMultiSection =
       !currentSelectedBlock && !isMultiEdit && isMultiSectionIntent(trimmed);
+    const isRemoveSection =
+      !isMultiEdit && isRemoveSectionIntent(trimmed, blocks.length > 0);
+    const isGlobalStyleEdit =
+      !currentSelectedBlock &&
+      !isMultiEdit &&
+      !isMultiSection &&
+      isGlobalStyleEditIntent(trimmed, blocks.length > 0);
+    const isAddSection =
+      !currentSelectedBlock &&
+      !isMultiEdit &&
+      !isMultiSection &&
+      !isGlobalStyleEdit &&
+      isAddSectionIntent(trimmed, blocks.length > 0);
 
     const userMessage: Message = {
       id: uuidv4(),
@@ -1450,6 +1596,164 @@ export default function ChatPanel({
     setMessages((prev) => [...prev, assistantMessage]);
 
     try {
+      if (isMultiEdit) {
+        const editBlocks = matchedBlocks.map((m) => m.block);
+        const result = await requestModification({
+          prompt: trimmed,
+          requestKind: "multi-section-edit",
+          targetBlockIds: editBlocks.map((block) => block.id),
+          selectedBlockId: selectedBlockId,
+        });
+        const candidateBlocks = applyModificationOperationsToBlocks(
+          blocks,
+          result.operations,
+        );
+        applyModificationOperations(result.operations);
+        if (candidateBlocks.length > 0) {
+          await runGenerationValidation(candidateBlocks);
+        }
+
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMessage.id
+              ? {
+                  ...m,
+                  content: buildModificationContent(blocks, result.operations),
+                  summary: `Modification engine (${result.executorMode}) â€” ${result.summary}`,
+                }
+              : m,
+          ),
+        );
+        onVersionCreated(trimmed);
+        return;
+      }
+
+      if (isRemoveSection) {
+        const targetBlock = currentSelectedBlock || matchedBlocks[0]?.block;
+        if (!targetBlock) {
+          throw new Error("Select a section or mention one clearly to remove it.");
+        }
+
+        const result = await requestModification({
+          prompt: trimmed,
+          requestKind: "remove-section",
+          selectedBlockId: targetBlock.id,
+          targetBlockIds: [targetBlock.id],
+        });
+        const candidateBlocks = applyModificationOperationsToBlocks(
+          blocks,
+          result.operations,
+        );
+        applyModificationOperations(result.operations);
+        if (candidateBlocks.length > 0) {
+          await runGenerationValidation(candidateBlocks);
+        }
+
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMessage.id
+              ? {
+                  ...m,
+                  content: "",
+                  summary: `Modification engine (${result.executorMode}) â€” ${result.summary}`,
+                }
+              : m,
+          ),
+        );
+        onVersionCreated(trimmed);
+        return;
+      }
+
+      if (isGlobalStyleEdit) {
+        const result = await requestModification({
+          prompt: trimmed,
+          requestKind: "global-style-edit",
+          selectedBlockId: selectedBlockId,
+        });
+        const candidateBlocks = applyModificationOperationsToBlocks(
+          blocks,
+          result.operations,
+        );
+        applyModificationOperations(result.operations);
+        if (candidateBlocks.length > 0) {
+          await runGenerationValidation(candidateBlocks);
+        }
+
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMessage.id
+              ? {
+                  ...m,
+                  content: buildModificationContent(blocks, result.operations),
+                  summary: `Modification engine (${result.executorMode}) â€” ${result.summary}`,
+                }
+              : m,
+          ),
+        );
+        onVersionCreated(trimmed);
+        return;
+      }
+
+      if (mode === "edit" && currentSelectedBlock) {
+        const result = await requestModification({
+          prompt: trimmed,
+          requestKind: "section-edit",
+          selectedBlockId: currentSelectedBlock.id,
+        });
+        const candidateBlocks = applyModificationOperationsToBlocks(
+          blocks,
+          result.operations,
+        );
+        applyModificationOperations(result.operations);
+        if (candidateBlocks.length > 0) {
+          await runGenerationValidation(candidateBlocks);
+        }
+
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMessage.id
+              ? {
+                  ...m,
+                  content: buildModificationContent(blocks, result.operations),
+                  summary: `Modification engine (${result.executorMode}) â€” ${result.summary}`,
+                }
+              : m,
+          ),
+        );
+        onVersionCreated(trimmed);
+        return;
+      }
+
+      if (isAddSection) {
+        const result = await requestModification({
+          prompt: trimmed,
+          requestKind: "add-section",
+          selectedBlockId: selectedBlockId,
+        });
+        const candidateBlocks = applyModificationOperationsToBlocks(
+          blocks,
+          result.operations,
+        );
+        applyModificationOperations(result.operations);
+        if (candidateBlocks.length > 0) {
+          await runGenerationValidation(candidateBlocks);
+        }
+
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMessage.id
+              ? {
+                  ...m,
+                  content: buildModificationContent(blocks, result.operations),
+                  summary: `Modification engine (${result.executorMode}) â€” ${result.summary}`,
+                }
+              : m,
+          ),
+        );
+        onVersionCreated(trimmed);
+        return;
+      }
+
       if (isMultiEdit) {
         // Multi-section edit — edit all matched blocks
         const editBlocks = matchedBlocks.map((m) => m.block);

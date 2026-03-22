@@ -111,6 +111,43 @@ ${userRequest}
 Create a complete new <section> with the described content. Include a meaningful data-block-id attribute. Return using the exact format with ---SUMMARY--- and ---HTML--- sections.`;
 }
 
+export function buildAddSectionPrompt(
+    userRequest: string,
+    existingSectionsSummary?: string,
+): string {
+    return `USER REQUEST:
+${userRequest}
+
+${existingSectionsSummary ? `EXISTING PAGE SECTIONS:\n${existingSectionsSummary}\n\n` : ''}You are adding ONE new section to an existing landing page.
+
+Rules:
+- Return exactly one new <section>.
+- Do not recreate the entire page.
+- Do not include duplicate navigation or footer sections unless the user explicitly asked for that.
+- Choose a meaningful root id and data-block-id for the new section.
+- Return using the exact format with ---SUMMARY--- and ---HTML--- sections.`;
+}
+
+export function buildGlobalStyleEditPrompt(
+    blockHtml: string,
+    userRequest: string,
+    blockId: string,
+): string {
+    return `CURRENT SECTION HTML (block ID: "${blockId}"):
+${blockHtml}
+
+GLOBAL STYLE REQUEST:
+${userRequest}
+
+You are updating this section as part of a page-wide style change.
+
+Rules:
+- Preserve the section's role and core content.
+- Preserve the same data-block-id.
+- Update the visual treatment, spacing, typography, and supporting classes as needed to match the new style direction.
+- Return the FULL updated section using the exact format with ---SUMMARY--- and ---HTML--- sections.`;
+}
+
 export function buildTemplateFillPrompt(
     skeleton: string,
     projectContext: string,

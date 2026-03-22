@@ -236,6 +236,29 @@ export function usePageState(projectId?: string) {
         setIsDirty(true);
     }, [pushUndo]);
 
+    const insertBlockAfter = useCallback((afterBlockId: string | null | undefined, block: Block) => {
+        logger.action('insertBlockAfter', { afterBlockId: afterBlockId || null, blockId: block.id, label: block.label });
+        isViewingOldVersion.current = false;
+        setBlocks((prev) => {
+            pushUndo([...prev]);
+
+            if (!afterBlockId) {
+                return [...prev, block];
+            }
+
+            const index = prev.findIndex((entry) => entry.id === afterBlockId);
+            if (index === -1) {
+                return [...prev, block];
+            }
+
+            const next = [...prev];
+            next.splice(index + 1, 0, block);
+            return next;
+        });
+        setCurrentVersionIndex(null);
+        setIsDirty(true);
+    }, [pushUndo]);
+
     const duplicateBlock = useCallback((id: string) => {
         let duplicatedId: string | null = null;
 
@@ -500,6 +523,7 @@ export function usePageState(projectId?: string) {
         addBlock,
         addBlockSmart,
         updateBlock,
+        insertBlockAfter,
         duplicateBlock,
         removeBlock,
         selectBlock,

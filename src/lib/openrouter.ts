@@ -8,6 +8,24 @@ interface OpenRouterRequest {
     model?: string;
 }
 
+export function resolveOpenRouterApiKey(apiKey: unknown): {
+    resolvedKey: string;
+    source: 'client' | 'env';
+} | null {
+    const envKey = process.env.OPENROUTER_API_KEY || '';
+    const clientKey = typeof apiKey === 'string' && apiKey.startsWith('sk-') ? apiKey : '';
+
+    if (clientKey) {
+        return { resolvedKey: clientKey, source: 'client' };
+    }
+
+    if (envKey) {
+        return { resolvedKey: envKey, source: 'env' };
+    }
+
+    return null;
+}
+
 /**
  * Free models to try in order when auto:free is selected.
  */
@@ -117,6 +135,33 @@ export async function streamFromOpenRouter({
 
     // All models failed
     throw new Error(`All free models failed:\n${errors.join('\n')}`);
+}
+
+export async function textFromOpenRouter({
+    prompt,
+    systemPrompt,
+    apiKey,
+    model,
+}: OpenRouterRequest): Promise<string> {
+    const stream = await streamFromOpenRouter({
+        prompt,
+        systemPrompt,
+        apiKey,
+        model,
+    });
+    const textStream = parseSSEStream(stream);
+    const reader = textStream.getReader();
+    let fullText = '';
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+            break;
+        }
+        fullText += value;
+    }
+
+    return fullText;
 }
 
 export function parseSSEStream(stream: ReadableStream<Uint8Array>): ReadableStream<string> {

@@ -4,7 +4,7 @@
 import { useState, useMemo, useCallback, useEffect, use, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { usePageState } from '@/hooks/usePageState';
-import { DESIGN_STYLES } from '@/types';
+import { DESIGN_STYLES, ModificationEngineOperation, ModificationEngineResponse } from '@/types';
 import PreviewPanel from '@/components/PreviewPanel';
 import ChatPanel, { ProjectDetails } from '@/components/ChatPanel';
 import Toolbar from '@/components/Toolbar';
@@ -37,6 +37,8 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
         canUndo,
         addBlockSmart,
         updateBlock,
+        insertBlockAfter,
+        removeBlock,
         selectBlock,
         clearSelection,
         reorderBlocks,
@@ -201,6 +203,30 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
         return parts.length > 0 ? parts.join('\n') : undefined;
     }, [projectDetails]);
 
+    const applyModificationOperations = useCallback((operations: ModificationEngineOperation[]) => {
+        operations.forEach((operation) => {
+            switch (operation.type) {
+                case 'update-block':
+                    updateBlock(operation.blockId, operation.html);
+                    break;
+                case 'insert-block':
+                    insertBlockAfter(operation.afterBlockId, operation.block);
+                    break;
+                case 'remove-block':
+                    removeBlock(operation.blockId);
+                    break;
+                case 'select-block':
+                    selectBlock(operation.blockId);
+                    break;
+                case 'set-design-style':
+                    setDesignStyle(operation.designStyle);
+                    break;
+                default:
+                    break;
+            }
+        });
+    }, [insertBlockAfter, removeBlock, selectBlock, setDesignStyle, updateBlock]);
+
     const handleElementEdit = useCallback(async (blockId: string, elementSelector: string, instruction: string) => {
         const block = blocks.find((entry) => entry.id === blockId);
         if (!block) {
@@ -218,14 +244,17 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
             throw new Error('Selected element could not be resolved.');
         }
 
-        const response = await fetch('/api/generate', {
+        const response = await fetch('/api/modification-engine', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 prompt: instruction,
-                currentHtml: targetElement.outerHTML,
-                blockId,
-                mode: 'element-edit',
+                requestKind: 'element-edit',
+                selectedBlockId: blockId,
+                selectedElementSelector: elementSelector,
+                selectedElementHtml: elementSelector === '__section_root__' ? block.html : targetElement.outerHTML,
+                blocks,
+                designStyle,
                 designStylePrompt,
                 projectContext,
             }),
@@ -236,21 +265,10 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
             throw new Error(error?.error || 'Failed to update the selected element.');
         }
 
-        const updatedFragment = (await response.text()).trim();
-        if (!updatedFragment) {
-            throw new Error('Element edit returned empty HTML.');
-        }
-
-        if (elementSelector === '__section_root__') {
-            updateBlock(blockId, updatedFragment);
-        } else {
-            targetElement.outerHTML = updatedFragment;
-            updateBlock(blockId, section.outerHTML);
-        }
-
+        const result = await response.json() as ModificationEngineResponse;
+        applyModificationOperations(result.operations);
         createVersionSnapshot(`Element edit: ${instruction}`);
-        selectBlock(blockId);
-    }, [blocks, createVersionSnapshot, designStylePrompt, projectContext, selectBlock, updateBlock]);
+    }, [applyModificationOperations, blocks, createVersionSnapshot, designStyle, designStylePrompt, projectContext]);
 
     const handleBackToProjects = useCallback(() => {
         if (isDirty) {
@@ -394,7 +412,9 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
                         isFullScreen={isChatFullScreen}
                         resetKey={chatResetKey}
                         onAddBlock={addBlockSmart}
+                        onInsertBlockAfter={insertBlockAfter}
                         onUpdateBlock={updateBlock}
+                        onRemoveBlock={removeBlock}
                         onSelectBlock={selectBlock}
                         onClearSelection={clearSelection}
                         onVersionCreated={(prompt) => createVersionSnapshot(prompt)}

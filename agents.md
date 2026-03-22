@@ -1,105 +1,66 @@
-# Crushable Project Guide
+# Crushable Agent Guide
 
-## What This Project Is
+## Purpose
 
-an AI-assisted multi-page project builder **Crushable**.
+Crushable is an AI-assisted landing page builder. The app lets a user describe a product, generate a plan, build a multi-section page, edit individual sections conversationally, edit specific elements from the live preview, inspect/export the generated HTML, and restore earlier versions.
 
-The product lets a user:
+This guide is for coding agents working inside the repo. It is intentionally practical: where state lives, which files matter, what invariants must be preserved, and which parts of the codebase have drifted from the older architecture.
 
-- create a new multi-page project from scratch,
-- describe the product or business in chat,
-- generate a section plan,
-- stream new sections into the page,
-- edit individual sections conversationally,
-- preview the result live,
-- inspect and directly edit the generated HTML,
-- save project history locally in the browser,
-- export a self-contained HTML file.
+## What The App Actually Does Today
 
-The app is mostly client-side. It stores project data in `localStorage` and uses a single server route to proxy requests to OpenRouter for LLM generation.
+The current product is no longer just "chat returns one section at a time".
 
-## High-Level Product Flow
+Important current behaviors:
 
-The intended user workflow is:
+- The builder starts with a setup flow in `ChatPanel` that collects project details and auto-selects a design style.
+- The generation pipeline supports multiple strategies, not just raw HTML generation:
+  - `hybrid`
+  - `template-first`
+  - `component-first`
+  - `html-only`
+- The app can ask the model for:
+  - full section HTML,
+  - section plans,
+  - detailed landing page plans,
+  - template fills,
+  - template selection,
+  - component composition,
+  - JSON patch edits,
+  - critique scores,
+  - validation feedback,
+  - style selection,
+  - element-only HTML edits.
+- The preview supports block selection and element selection through iframe `postMessage`.
+- The code view lets users directly edit assembled section HTML and then reparse it back into block data.
 
-1. Open the home page and start a blank project.
-2. Enter optional project details such as brand, hero title, subtitle, and CTA. atleast 50 characters required details is product description.
-3. Generate a detailed multi-page project plan.
-4. Accept the plan and build sections one by one through the chat workflow.
-5. Select a section from the preview or section list and ask for targeted edits.
-6. Save versions, inspect code, import/export HTML, or restore earlier output.
+If you are changing the builder, assume the product is "block-oriented HTML generation with multiple refinement paths", not a simple single-prompt chat toy.
 
-There are two important modes inside the builder:
-
-- **Full-page generation mode**: the chat flow plans and creates multiple sections for the project.
-- **Section edit mode**: the chat targets one selected section and asks the model to change only that block.
-
-## Tech Stack
-
-- **Framework**: Next.js 16 with App Router
-- **UI**: React 19 + TypeScript
-- **Styling**: Tailwind CSS v4 for the app shell, Tailwind CDN for exported/generated pages
-- **Icons**: Lucide React in the app, Lucide CDN in generated pages
-- **Persistence**: browser `localStorage`
-- **AI provider**: OpenRouter
-- **Packaging utility**: `jszip` is installed, though the core export path currently writes a single HTML file
-
-## Top-Level Structure
-
-### App entry points
-
-- `src/app/page.tsx`: home screen with recent projects and settings access.
-- `src/app/project/[id]/page.tsx`: main builder experience for both existing projects and `/project/new`.
-- `src/app/api/generate/route.ts`: server route that prepares prompts and streams model output back to the client.
-- `src/app/layout.tsx`: root app layout.
-- `src/app/globals.css`: global styling for the application shell.
-
-### Main UI components
-
-- `src/components/ChatPanel.tsx`: chat workflow, plan generation, section generation, section editing, message history, and streamed model responses.
-- `src/components/PreviewPanel.tsx`: iframe-based live preview, code view, console capture, and preview-to-editor block selection.
-- `src/components/SectionPanel.tsx`: section list, ordering, duplicate/delete actions, and preview visibility toggling.
-- `src/components/Toolbar.tsx`: global builder actions such as save, import, export, view mode switching, project rename, and settings access.
-- `src/components/VersionsPanel.tsx`: version browsing and restore UI.
-- `src/components/SettingsModal.tsx`: API key and model selection.
-- `src/components/HelpModal.tsx`: user help/instructions.
-
-### State and utilities
-
-- `src/hooks/usePageState.ts`: central client-side project state manager.
-- `src/lib/storage.ts`: persistence helpers for settings and projects.
-- `src/lib/openrouter.ts`: OpenRouter request logic and streaming parser.
-- `src/lib/prompt.ts`: system prompt construction and mode-specific prompt builders.
-- `src/lib/blocks.ts`: block creation, label derivation, and duplication helpers.
-- `src/lib/import.ts`: import parsing for Crushable-generated HTML.
-- `src/lib/export.ts`: export generation for standalone HTML files.
-- `src/lib/logger.ts`: structured console logging.
-- `src/types/index.ts`: shared app types, design styles, and model metadata.
-
-## Core Data Model
-
-The entire builder is organized around a small set of core types.
+## Core Product Model
 
 ### Block
 
-A `Block` is a single section within the project.
+A `Block` is the unit of generation, preview, saving, import, export, versioning, and editing.
 
 Fields:
 
-- `id`: logical block identifier, usually tied to the section's `data-block-id`
-- `label`: human-friendly name shown in the UI
-- `html`: full HTML string for that section
-- `visible`: optional flag used to hide sections from the preview/export path without deleting them
+- `id`
+- `label`
+- `html`
+- `visible`
 
-Important implementation detail:
+Non-negotiable block invariant:
 
-- The generated HTML for every section is expected to be wrapped in a single `<section data-block-id="...">` root element.
+- each block is expected to be rooted in a single `<section ...>` element
+- the root should carry `data-block-id`
+- the root `id` and `data-block-id` should stay aligned whenever possible
+
+Breaking those assumptions will cause selection, anchor repair, import/export, validation, and update flows to degrade.
 
 ### Project
 
-A `Project` is the saved unit stored in browser storage.
+Projects are browser-local and stored in `localStorage`. There is no database.
 
-Fields currently used by the app:
+Persisted fields currently used:
 
 - `id`
 - `name`
@@ -109,367 +70,336 @@ Fields currently used by the app:
 - `designStyle`
 - `updatedAt`
 
-### Version
-
-A `Version` stores a full snapshot of the current blocks and optional prompt metadata. Versions let the user inspect or restore earlier generated output without losing the latest working set.
+There are also type-level fields like `theme` and `status`, but the active builder flow is centered on the fields above.
 
 ### Message
 
-The chat history stores both user and assistant messages. Messages may also include:
+Messages are not just display text. They are part of builder state and may contain:
 
-- a short summary,
-- a detailed plan string,
-- an associated `blockId`,
-- a block snapshot for restore operations.
+- `summary`
+- `plan`
+- `blockId`
+- `blocksSnapshot`
+- `timestamp`
 
-## Builder Architecture
+Those snapshots power restore/checkpoint behavior inside chat.
 
-### Builder page composition
+## Main Runtime Flow
 
-The builder page at `src/app/project/[id]/page.tsx` composes the experience from four main pieces:
+### 1. Builder page
 
+`src/app/project/[id]/page.tsx` is the orchestration layer.
+
+It wires together:
+
+- `usePageState`
 - `Toolbar`
 - `ChatPanel`
-- `SectionPanel`
 - `PreviewPanel`
+- `VersionsPanel`
+- `SettingsModal`
+- `HelpModal`
 
-`usePageState` acts as the coordinating state layer beneath them.
+It also owns:
 
-The builder also manages a few cross-cutting concerns:
+- `/project/new` redirect behavior
+- template application from `?template=...`
+- project detail -> prompt context assembly
+- auto project naming
+- keyboard shortcuts
+- before-unload protection
+- preview element-edit requests
+- code-view save -> `parseImportedHtml` -> block reconstruction
 
-- redirecting `/project/new` to the actual generated project ID,
-- mapping selected design style IDs to prompt text,
-- converting project details into shared LLM context,
-- keyboard shortcuts for save, undo, and escape-to-clear-selection,
-- unsaved-change protection on browser unload.
+Start here when you need the real top-level behavior.
 
-### State ownership
+### 2. State layer
 
-`usePageState` is the main source of truth for:
+`src/hooks/usePageState.ts` is the source of truth for the builder.
 
-- page blocks,
-- selected block,
-- dirty state,
-- current project ID,
-- project name,
-- saved messages,
-- design style,
-- version history,
-- undo stack,
-- readiness/loading state.
+It owns:
 
-This hook is effectively the builder's local store.
+- blocks
+- selected block
+- current project id
+- dirty state
+- project name
+- versions
+- current version index
+- design style
+- undo stack
+- persisted chat messages
+- ready/loading state
 
-## Project Lifecycle and Persistence
+Important behaviors:
 
-### New project behavior
+- new projects are created in memory first and only saved once they have meaningful content
+- autosave runs after dirty changes
+- version browsing is isolated from the latest working state via `latestBlocksRef`
+- undo is in-memory only
+- version snapshots are durable
+- `addBlockSmart` applies layout-aware insertion rules
 
-When the route is `/project/new`, the app creates a UUID-based project identity in memory, but it does **not** persist the project immediately.
+If something feels like "global page state", it probably belongs here.
 
-A new project is only saved once it has meaningful content, defined by:
+### 3. Chat and generation
 
-- at least one block,
-- or saved messages,
-- or saved versions,
-- or a selected design style,
-- or a renamed project title.
+`src/components/ChatPanel.tsx` is the most complex file in the app.
 
-This avoids cluttering storage with empty drafts.
+It currently handles:
 
-### Autosave model
+- setup/details capture
+- design-style selection
+- intent detection
+- multi-section planning
+- section-by-section generation
+- edit flows
+- explanation flows
+- validation and auto-fix flows
+- patch generation/application
+- template-first generation
+- component-first generation
+- message persistence
+- cancellation via `AbortController`
+- progress/status display for concurrent generation
 
-The builder autosaves approximately 2 seconds after a dirty change if a project ID exists. Manual save is also available from the toolbar and via `Ctrl/Cmd + S`.
+Do not assume older docs about `ChatPanel` are complete. Read the file before making changes there.
 
-### Storage keys
+### 4. Preview and editing bridge
 
-Local persistence uses these browser keys:
+`src/components/PreviewPanel.tsx` is both a renderer and an editor bridge.
 
-- `crushable:apiKey`
-- `crushable:model`
-- `crushable:projects`
-- `crushable:currentProjectId`
+Responsibilities:
 
-### No database
+- render visible blocks inside an iframe
+- inject Tailwind CDN and Lucide
+- intercept console output from generated code
+- support preview/code/console modes
+- highlight selected blocks
+- support block selection from preview
+- support element selection via Ctrl/Cmd+Click in edit mode
+- provide direct code editing for assembled HTML
 
-There is no application database in the current architecture. Projects live entirely in the browser. The only server-side responsibility is AI request proxying.
+Important implication:
 
-Implications:
+- preview interactions depend on stable block ids and `<section data-block-id="...">` roots
 
-- projects are browser-local,
-- clearing browser storage removes saved projects,
-- there is no built-in sharing or collaboration,
-- deployment is operationally simple because there is no persistent backend.
+### 5. AI route
 
-## Chat and Generation Flow
+`src/app/api/generate/route.ts` is the single server route.
 
-`src/components/ChatPanel.tsx` contains most of the product's AI workflow logic.
+It selects prompts and forwards requests to OpenRouter for modes including:
 
-### Main responsibilities of ChatPanel
+- `new`
+- `edit`
+- `element-edit`
+- `plan`
+- `detailed-plan`
+- `style-select`
+- `fill-template`
+- `select-templates`
+- `compose`
+- `patch-edit`
+- `critique`
+- `validate`
 
-- maintain the interactive chat UI,
-- infer whether a user message is asking for a new section, an edit, or a full-page generation flow,
-- request a plan before multi-section generation,
-- stream model output into the UI,
-- convert model responses into blocks and summaries,
-- persist chat history back to the builder state.
+When adding a new generation mode, the natural place is:
 
-### Intent handling
+1. prompt builder in `src/lib/prompt.ts`
+2. route branch in `src/app/api/generate/route.ts`
+3. client call site in `ChatPanel` or `BuilderPage`
 
-The chat code distinguishes among several request types:
+## Key Supporting Libraries
 
-- **edit intent**: modifies the selected section when blocks already exist,
-- **multi-section intent**: triggers page planning/build flow,
-- **explanation intent**: explains previous changes instead of regenerating content,
-- **new section intent**: creates a new block.
+### Prompt construction
 
-### Planning flow
+`src/lib/prompt.ts`
 
-The codebase supports two planning modes in practice:
+Contains:
 
-- a simple JSON-array section planner,
-- a more detailed product-specific plan generator.
+- system prompt builders
+- edit/new prompt builders
+- detailed planning prompt builders
+- element-edit prompt builders
+- validation/style-select/template/patchedit prompts
+- response parsers
 
-The API route includes explicit support for `plan` and `detailed-plan` modes. The detailed planner is tailored around brand, product description, style, hero copy, and CTA.
+Critical contract:
 
-### Response contract
-
-For normal generation and edit requests, the system prompt requires the model to return output in this format:
+- normal section generation expects:
 
 ```text
 ---SUMMARY---
-<brief explanation>
+...
 ---HTML---
-<section HTML>
+<section ...>...</section>
 ```
 
-`parseResponse` in `src/lib/prompt.ts` extracts those two parts. The HTML becomes the block content. The summary is used in chat history and version/change explanation flows.
+Element edit mode is different:
 
-## AI Integration
+- it should return only the updated element HTML, not a wrapped summary/html pair
 
-### API route
+### Generation helpers
 
-`src/app/api/generate/route.ts` is the single server endpoint for generation.
+`src/lib/generation.ts`
 
-It:
+Contains helper utilities for:
 
-- accepts request payloads from the client,
-- resolves the API key source,
-- selects the correct prompt mode,
-- calls OpenRouter,
-- converts the SSE stream into plain text chunks,
-- returns a streamed text response to the client.
+- template catalogs
+- component catalogs
+- section maps
+- section generation prompts
+- concurrency-limited execution
+- progress formatting
 
-### API key resolution
+### Validation
 
-The route prefers:
+`src/lib/validate.ts`
 
-1. a client-provided key from settings if it looks valid,
-2. otherwise `OPENROUTER_API_KEY` from the environment.
+The app validates assembled HTML for:
 
-If neither is available, the route returns a `401` with setup guidance.
+- duplicate navigation
+- duplicate ids
+- duplicate block ids
+- broken anchors
+- placeholder/missing images
+- missing section backgrounds
+- awkward hero full-height balance
+- cramped social-proof grids
+- missing smooth scrolling
 
-### Prompt shaping
+It also includes auto-fix helpers, so not every issue requires a full regeneration.
 
-`src/lib/prompt.ts` builds prompts with two important context layers:
+### Patch edits
 
-- **design system instruction** from the selected style,
-- **project context** assembled from brand/product/hero/CTA details.
+`src/lib/patch.ts`
 
-That means the model is not just told to build HTML. It is also told:
+Supports surgical DOM-like patch operations such as:
 
-- what kind of visual system to follow,
-- what brand/product it is building for,
-- how to reuse hero text correctly,
-- how to keep other sections section-specific.
+- `replace`
+- `setAttribute`
+- `addClass`
+- `removeClass`
+- `insertAfter`
+- `insertBefore`
+- `remove`
 
-### Free model fallback strategy
+If you change patch behavior, preserve the invariant that patch application operates on a root section fragment.
 
-`src/lib/openrouter.ts` defines a free-model fallback chain for `auto:free`:
+### Storage
 
-1. `stepfun/step-3.5-flash:free`
-2. `z-ai/glm-4.5-air:free`
-3. `nvidia/nemotron-3-nano-30b-a3b:free`
-4. `google/gemma-3-27b-it:free`
+`src/lib/storage.ts`
 
-If a specific premium model is selected, the system tries that model directly. If auto mode is used, it iterates through the free list until one succeeds.
+Local storage keys currently include:
 
-### Streaming model output
+- `crushable:apiKey`
+- `crushable:model`
+- `crushable:generationStrategy`
+- `crushable:refinementLevel`
+- `crushable:projects`
+- `crushable:currentProjectId`
 
-OpenRouter returns an SSE stream. `parseSSEStream` reads the stream, extracts `delta.content`, and emits plain text chunks. The API route then forwards those chunks to the client as a regular text stream.
+This is important because older docs may mention only API key/model/project keys.
 
-## Preview and Editing Model
+## Current UI Pieces
 
-`src/components/PreviewPanel.tsx` is more than a static preview. It is a two-way bridge between generated HTML and the builder UI.
+### `Toolbar`
 
-### Preview responsibilities
+`src/components/Toolbar.tsx`
 
-- render visible blocks inside an iframe,
-- inject Tailwind and Lucide runtime support,
-- capture iframe console output and errors,
-- support preview/code/console modes,
-- let users click a section in the iframe to select it in the builder,
-- focus and highlight selected blocks inside the preview.
+Current toolbar behavior includes:
 
-### Iframe communication
+- project rename
+- save state display
+- settings/help
+- version drawer
+- chat hide/show
+- preview/code/console tabs
+- desktop/mobile preview toggle
+- preview refresh
+- element edit mode toggle
+- import/export
+- open preview in new tab
 
-The preview uses `postMessage` in both directions:
+### `SectionPanel`
 
-- preview to parent: section selection events and console messages,
-- parent to preview: focus/highlight/clear-selection commands.
+`src/components/SectionPanel.tsx`
 
-This is the mechanism that makes click-to-edit work from the live rendered page.
+Supports:
 
-### Code editing mode
+- section selection
+- drag reorder
+- duplicate
+- delete
+- visibility toggle
 
-In code view, the user can edit the assembled HTML directly. On save, the builder attempts to parse the edited markup back into sections using `parseImportedHtml`.
+It also derives a tiny structural thumbnail from heading/paragraph/action counts.
 
-If parsing finds no valid Crushable sections, the system falls back to treating the whole result as a single block.
+### `VersionsPanel`
 
-## Sections and Block Management
+Shows durable saved snapshots. Keep the distinction clear:
 
-`src/components/SectionPanel.tsx` gives the user structural control over the landing page.
+- undo = temporary session history
+- versions = named durable project history
 
-Supported actions:
+## Important Invariants
 
-- select a section,
-- drag and reorder sections,
-- duplicate a section,
-- delete a section,
-- toggle whether a section is visible in preview/export.
+Keep these true unless you are intentionally redesigning the whole system.
 
-### Smart insertion rules
+- Every generated section should be a single `<section>` root.
+- Root `data-block-id` must remain stable across edits.
+- Root `id` should remain unique across the full page.
+- Anchor links should resolve to actual section ids.
+- Hidden blocks should stay excluded from preview/export.
+- Import/export flows assume HTML-first sections, not React component serialization.
+- Version browsing must not overwrite the true latest working block state.
+- Message history should remain persistable and restorable.
 
-`addBlockSmart` in `usePageState` applies layout-aware rules when adding new blocks:
+## Known Sharp Edges
 
-- nav/header-like blocks go to the top,
-- footer-like blocks go to the bottom,
-- other sections are inserted before an existing footer if one exists,
-- otherwise they are appended.
+These are the places agents are most likely to break something accidentally.
 
-This keeps common page structure mostly sane without requiring every generation step to fully manage ordering.
+- `ChatPanel.tsx` is large and stateful. Read nearby helpers before changing a branch.
+- `usePageState.ts` mixes autosave, undo, version browsing, and project lifecycle logic.
+- `PreviewPanel.tsx` has iframe scripts embedded as strings. Small changes can break selection or console capture.
+- The builder page currently imports `SectionPanel`, but the rendered layout is centered around `ChatPanel` and `PreviewPanel`. Verify the actual UI path before assuming a component is active.
+- Some files contain mojibake in strings/comments from prior edits. Avoid "cleaning up" unrelated text unless needed for your task.
 
-### Duplication model
+## Best Places To Make Common Changes
 
-Duplicated blocks get a unique derived ID such as `hero-copy` or `hero-copy-2`. The duplicated HTML is rewritten so the embedded `data-block-id` matches the new block identity.
+### Add a new generation mode
 
-## Versioning and Undo
+- `src/lib/prompt.ts`
+- `src/app/api/generate/route.ts`
+- caller in `src/components/ChatPanel.tsx` or `src/app/project/[id]/page.tsx`
 
-The builder has two different recovery mechanisms.
+### Change project persistence
 
-### Undo stack
+- `src/lib/storage.ts`
+- `src/hooks/usePageState.ts`
 
-`usePageState` maintains an in-memory undo stack capped at 20 snapshots. This is for short-term interaction recovery during the current session.
+### Change section import/export behavior
 
-### Version snapshots
+- `src/lib/import.ts`
+- `src/lib/export.ts`
+- `src/components/PreviewPanel.tsx`
+- `src/app/project/[id]/page.tsx`
 
-Version history is a durable project-level record saved with the project. A version snapshot stores:
+### Change section identity/duplication rules
 
-- a label,
-- timestamp,
-- copied block array,
-- optional prompt metadata.
+- `src/lib/blocks.ts`
+- `src/hooks/usePageState.ts`
+- `src/lib/validate.ts`
 
-### Important implementation detail
+### Change preview click/edit behavior
 
-The hook keeps a separate `latestBlocksRef` so browsing older versions does not overwrite the true current working state. That prevents accidental corruption when a user previews an old version and then returns to the latest content.
+- `src/components/PreviewPanel.tsx`
+- `src/app/project/[id]/page.tsx`
+- possibly `src/app/globals.css`
 
-## Import and Export
+## Read Order For New Agents
 
-### Export
-
-`src/lib/export.ts` produces a single standalone HTML document containing:
-
-- a document wrapper,
-- Google Fonts for Inter,
-- Tailwind CDN,
-- Lucide CDN,
-- all visible section HTML.
-
-Hidden sections are not exported.
-
-### Import
-
-`src/lib/import.ts` only supports HTML that contains sections in the Crushable block format:
-
-```html
-<section data-block-id="...">...</section>
-```
-
-The toolbar explicitly warns users that importing arbitrary HTML from other tools may not work correctly.
-
-## Design Style System
-
-The app ships with a fixed set of design styles in `src/types/index.ts`:
-
-- Professional
-- Playful
-- Minimal
-- Bold & Dark
-- Elegant
-
-Each style includes:
-
-- a stable ID,
-- a label,
-- a short description,
-- an emoji for UI display,
-- a prompt fragment that instructs the LLM how to design the page.
-
-This style selection is a prompt-time system rather than a post-generation theming engine. In other words, the selected style influences what the model generates, not just how the app previews it.
-
-## Logging and Debugging
-
-`src/lib/logger.ts` wraps `console.log` and `console.error` with a consistent `[Crushable]` prefix and ISO timestamps.
-
-The logger is used across:
-
-- UI actions,
-- storage operations,
-- API requests,
-- prompt emission,
-- stream lifecycle events,
-- errors.
-
-This is useful because the app relies heavily on client-side state transitions and streamed AI interactions, both of which are easier to debug with structured logs.
-
-## Constraints and Assumptions in the Current Codebase
-
-These are the practical assumptions the current implementation makes:
-
-- generated/imported sections are rooted in `<section data-block-id="...">`,
-- the project builder is organized around reusable HTML sections rather than route-level React pages,
-- saved projects are per-browser rather than shared across devices,
-- the generated output is HTML-first rather than React component-first,
-- the AI contract is strict about response shape and section wrapping,
-- preview interaction depends on iframe scripting and block IDs remaining stable.
-
-## Good Extension Points
-
-If someone wants to extend the project, the cleanest places are:
-
-### Add new design styles
-
-Update `DESIGN_STYLES` in `src/types/index.ts` and expose the new option in the UI.
-
-### Improve import support
-
-Expand `parseImportedHtml` to recognize more structures or provide an import normalization step.
-
-### Add backend persistence
-
-Replace or supplement `src/lib/storage.ts` with server-backed project storage while keeping `usePageState` as the consumer API.
-
-### Add collaboration or sharing
-
-This would require introducing project persistence beyond `localStorage` plus a shareable project identifier model.
-
-### Add richer generation modes
-
-The current `/api/generate` route already supports multiple modes. New workflows can fit naturally by adding another mode, prompt builder, and client-side chat branch.
-
-## File-by-File Starting Points for a New Contributor
-
-If you are new to the codebase, the fastest way to understand it is to read files in this order:
+If you need to get productive quickly, read files in this order:
 
 1. `src/app/project/[id]/page.tsx`
 2. `src/hooks/usePageState.ts`
@@ -477,22 +407,31 @@ If you are new to the codebase, the fastest way to understand it is to read file
 4. `src/components/PreviewPanel.tsx`
 5. `src/app/api/generate/route.ts`
 6. `src/lib/prompt.ts`
-7. `src/lib/openrouter.ts`
-8. `src/lib/storage.ts`
-9. `src/types/index.ts`
+7. `src/lib/generation.ts`
+8. `src/lib/validate.ts`
+9. `src/lib/patch.ts`
+10. `src/lib/storage.ts`
+11. `src/types/index.ts`
 
-That sequence moves from product shell to local state, then into generation behavior, then into the server/LLM boundary, and finally into the shared utilities.
+## Guidance For Future Agents
+
+- Prefer preserving existing block ids over regenerating them.
+- When editing HTML-producing prompts, think about import, preview, validation, and export together.
+- When changing the builder flow, check both chat persistence and version snapshot behavior.
+- When changing preview behavior, test both block selection and element edit selection.
+- When changing generation strategy logic, verify that settings storage and defaults still line up with the UI.
+- If you are unsure whether the source of truth is the page component or `usePageState`, it is almost always `usePageState`.
 
 ## Summary
 
-Crushable is an AI multi-page project builder centered on a simple idea: each project is composed from HTML section blocks, and the app uses a chat-driven workflow to plan, generate, edit, preview, version, and export those blocks.
+Crushable is a browser-local, block-based landing page builder with a surprisingly rich generation stack: strategy-driven section generation, prompt shaping, validation, patching, element-level editing, iframe preview interaction, and durable version history.
 
-Its architecture is intentionally lightweight:
+The safest mental model is:
 
-- browser-local project storage,
-- one server generation endpoint,
-- a prompt-driven style system,
-- iframe-based preview interaction,
-- block-oriented editing and versioning.
+- builder page orchestrates
+- `usePageState` owns data
+- `ChatPanel` owns AI workflow
+- `PreviewPanel` owns rendering plus interactive editing
+- `/api/generate` is the only AI server boundary
 
-That makes the project reasonably easy to extend, as long as new work respects the core contract that the project is composed of stable section blocks with `data-block-id` markers.
+If your change preserves block-rooted section HTML and stable block identities, you are probably working with the grain of the app.

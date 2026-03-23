@@ -1,3 +1,4 @@
+import { setRootSectionIdentifiers } from '@/lib/blocks';
 import { Block, ValidationIssue } from '@/types';
 
 function hasExplicitBackground(section: Element): boolean {
@@ -159,6 +160,74 @@ function improveSocialProofLayout(html: string): string {
     /class="grid grid-cols-2 gap-4 sm:grid-cols-3"/i,
     'class="grid gap-4 sm:grid-cols-2 lg:max-w-xl"',
   );
+
+  return nextHtml;
+}
+
+function parseSection(html: string): Element | null {
+  const parser = new DOMParser();
+  const documentFragment = parser.parseFromString(html, 'text/html');
+  return documentFragment.body.querySelector('section');
+}
+
+function blockContainsNavigationChrome(block: Block): boolean {
+  const section = parseSection(block.html);
+  if (!section) {
+    return false;
+  }
+
+  const rootId = (section.getAttribute('id') || block.id || '').toLowerCase();
+  const label = (block.label || '').toLowerCase();
+
+  return Boolean(
+    section.querySelector('nav')
+    || Array.from(section.querySelectorAll('header')).some((header) => {
+      const className = header.getAttribute('class') || '';
+      const style = header.getAttribute('style') || '';
+      return /(sticky|fixed)/.test(className) || /position\s*:\s*(sticky|fixed)/i.test(style);
+    })
+    || /\b(nav|navigation|header)\b/.test(rootId)
+    || /\b(nav|navigation|header)\b/.test(label)
+  );
+}
+
+function stripStickyTokens(className: string): string {
+  return className
+    .split(/\s+/)
+    .filter((token) => token && !/^(sticky|fixed|top-\S+|bottom-\S+|left-\S+|right-\S+|inset-\S+|z-\S+)$/.test(token))
+    .join(' ')
+    .trim();
+}
+
+function stripStickyStyles(styleValue: string): string {
+  return styleValue
+    .replace(/position\s*:\s*(?:sticky|fixed)\s*;?/gi, '')
+    .replace(/\b(?:top|right|bottom|left)\s*:\s*[^;"]+;?/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+    .replace(/^;|;$/g, '');
+}
+
+function demoteDuplicateNavigation(html: string): string {
+  let nextHtml = html
+    .replace(/<nav\b/gi, '<div data-demoted-nav="true"')
+    .replace(/<\/nav>/gi, '</div>');
+
+  nextHtml = nextHtml.replace(/<header\b[^>]*>/gi, (openingTag) => {
+    let nextTag = openingTag;
+
+    nextTag = nextTag.replace(/\sclass="([^"]*)"/i, (_, className: string) => {
+      const cleaned = stripStickyTokens(className);
+      return cleaned ? ` class="${cleaned}"` : '';
+    });
+
+    nextTag = nextTag.replace(/\sstyle="([^"]*)"/i, (_, styleValue: string) => {
+      const cleaned = stripStickyStyles(styleValue);
+      return cleaned ? ` style="${cleaned}"` : '';
+    });
+
+    return nextTag;
+  });
 
   return nextHtml;
 }
@@ -334,10 +403,40 @@ export function autoFixIssues(blocks: Block[], issues: ValidationIssue[]): {
   blocks: Block[];
   applied: string[];
 } {
-  let nextBlocks = blocks.map((block) => ({ ...block }));
+  let nextBlocks = blocks.map((block) => {
+    const normalizedHtml = setRootSectionIdentifiers(block.html, block.id);
+    return normalizedHtml === block.html
+      ? { ...block }
+      : { ...block, html: normalizedHtml };
+  });
   const applied: string[] = [];
 
+  nextBlocks.forEach((block, index) => {
+    if (block.html !== blocks[index]?.html) {
+      applied.push(`Realigned section id and data-block-id for ${block.id}.`);
+    }
+  });
+
   for (const issue of issues) {
+    if (issue.code === 'duplicate-navigation') {
+      const navigationBlockIds = nextBlocks
+        .filter((block) => blockContainsNavigationChrome(block))
+        .map((block) => block.id);
+
+      if (navigationBlockIds.length > 1) {
+        const duplicateNavigationIds = new Set(navigationBlockIds.slice(1));
+        nextBlocks = nextBlocks.map((block) =>
+          duplicateNavigationIds.has(block.id)
+            ? { ...block, html: demoteDuplicateNavigation(block.html) }
+            : block,
+        );
+
+        duplicateNavigationIds.forEach((blockId) => {
+          applied.push(`Removed duplicate navigation chrome from ${blockId}.`);
+        });
+      }
+    }
+
     if (issue.code === 'missing-background' && issue.blockId) {
       nextBlocks = nextBlocks.map((block) =>
         block.id === issue.blockId

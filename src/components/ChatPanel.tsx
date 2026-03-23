@@ -742,6 +742,34 @@ export default function ChatPanel({
     return `Validation found ${issues.length} issue${issues.length === 1 ? "" : "s"}: ${preview}`;
   }, []);
 
+  const buildValidationOutcomeSummary = useCallback(
+    (
+      initialIssues: ValidationIssue[],
+      remainingIssues: ValidationIssue[],
+      appliedFixes: string[],
+    ) => {
+      if (initialIssues.length === 0 && appliedFixes.length === 0) {
+        return "Validation complete â€” no issues found in the assembled page.";
+      }
+
+      if (initialIssues.length > 0 && remainingIssues.length === 0) {
+        const fixesPreview =
+          appliedFixes.length > 0
+            ? ` Applied fixes: ${appliedFixes.slice(0, 4).join(" ")}`
+            : "";
+        return `Validation found ${initialIssues.length} issue${initialIssues.length === 1 ? "" : "s"} and fixed ${appliedFixes.length || initialIssues.length} automatically.${fixesPreview}`;
+      }
+
+      const fixesPreview =
+        appliedFixes.length > 0
+          ? ` Applied fixes: ${appliedFixes.slice(0, 4).join(" ")}`
+          : "";
+
+      return `Validation found ${initialIssues.length} issue${initialIssues.length === 1 ? "" : "s"}. Remaining status: ${summarizeValidationIssues(remainingIssues)}${fixesPreview}`;
+    },
+    [summarizeValidationIssues],
+  );
+
   const generateSection = useCallback(
     async (
       prompt: string,
@@ -965,21 +993,70 @@ export default function ChatPanel({
   const runGenerationValidation = useCallback(
     async (candidateBlocks: Block[]) => {
       const refinementLevel = getRefinementLevel();
-      const normalizedHtml = applyGlobalValidationFixes(
-        generateFullHTML(candidateBlocks),
+      const initialIssues = validateGeneratedHtml(
+        applyGlobalValidationFixes(generateFullHTML(candidateBlocks)),
       );
-      const issues = validateGeneratedHtml(normalizedHtml);
 
       let nextBlocks = candidateBlocks.map((block) => ({ ...block }));
       const appliedFixes: string[] = [];
+      const applyAutomaticFixPass = (issuesToFix: ValidationIssue[]) => {
+        if (issuesToFix.length === 0) return;
 
-      if (refinementLevel !== "off") {
-        const autoFixed = autoFixIssues(nextBlocks, issues);
+        const autoFixed = autoFixIssues(nextBlocks, issuesToFix);
         nextBlocks = autoFixed.blocks;
         appliedFixes.push(...autoFixed.applied);
+      };
+
+      applyAutomaticFixPass(initialIssues);
+
+      let remainingIssues = validateGeneratedHtml(
+        applyGlobalValidationFixes(generateFullHTML(nextBlocks)),
+      );
+
+      // Attempt targeted regeneration for issues that auto-fix couldn't resolve
+      if (remainingIssues.length > 0 && refinementLevel !== "off") {
+        const blockIdsWithIssues = new Set(
+          remainingIssues
+            .map((issue) => issue.blockId)
+            .filter((id): id is string => Boolean(id)),
+        );
+
+        for (const blockId of blockIdsWithIssues) {
+          const index = nextBlocks.findIndex((b) => b.id === blockId);
+          if (index === -1) continue;
+
+          const block = nextBlocks[index];
+          const blockIssues = remainingIssues.filter(
+            (issue) => issue.blockId === blockId,
+          );
+          const issueDescriptions = blockIssues
+            .map((issue) => issue.message)
+            .join("\n- ");
+
+          const refined = await generateSection(
+            `Fix the following validation issues in this section while preserving its content and design:\n- ${issueDescriptions}`,
+            "edit",
+            block,
+          );
+          nextBlocks[index] = {
+            ...block,
+            html: setRootSectionIdentifiers(refined.html, block.id),
+          };
+          appliedFixes.push(
+            `Regenerated ${block.label || blockId} to fix ${blockIssues.length} issue${blockIssues.length === 1 ? "" : "s"}.`,
+          );
+        }
+
+        remainingIssues = validateGeneratedHtml(
+          applyGlobalValidationFixes(generateFullHTML(nextBlocks)),
+        );
+        applyAutomaticFixPass(remainingIssues);
+        remainingIssues = validateGeneratedHtml(
+          applyGlobalValidationFixes(generateFullHTML(nextBlocks)),
+        );
       }
 
-      if (refinementLevel === "full") {
+      if (refinementLevel === "full" && remainingIssues.length === 0) {
         for (let index = 0; index < nextBlocks.length; index += 1) {
           const block = nextBlocks[index];
           const critique = await critiqueSection(block);
@@ -1012,9 +1089,20 @@ export default function ChatPanel({
             "edit",
             block,
           );
-          nextBlocks[index] = { ...block, html: refined.html };
+          nextBlocks[index] = {
+            ...block,
+            html: setRootSectionIdentifiers(refined.html, block.id),
+          };
           appliedFixes.push(`Refined ${block.label} after critique.`);
         }
+
+        remainingIssues = validateGeneratedHtml(
+          applyGlobalValidationFixes(generateFullHTML(nextBlocks)),
+        );
+        applyAutomaticFixPass(remainingIssues);
+        remainingIssues = validateGeneratedHtml(
+          applyGlobalValidationFixes(generateFullHTML(nextBlocks)),
+        );
       }
 
       nextBlocks.forEach((block) => {
@@ -1026,16 +1114,15 @@ export default function ChatPanel({
         }
       });
 
-      const summarySuffix =
-        appliedFixes.length > 0
-          ? ` Applied fixes: ${appliedFixes.slice(0, 3).join(" ")}`
-          : "";
-
       const validationMessage: Message = {
         id: uuidv4(),
         role: "assistant",
         content: "",
-        summary: `${summarizeValidationIssues(issues)}${summarySuffix}`,
+        summary: buildValidationOutcomeSummary(
+          initialIssues,
+          remainingIssues,
+          appliedFixes,
+        ),
         timestamp: Date.now(),
       };
 
@@ -1043,10 +1130,10 @@ export default function ChatPanel({
       return nextBlocks;
     },
     [
+      buildValidationOutcomeSummary,
       critiqueSection,
       generateSection,
       onUpdateBlock,
-      summarizeValidationIssues,
     ],
   );
 

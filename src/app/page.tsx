@@ -12,6 +12,11 @@ export default function HomePage() {
   const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [productBrief, setProductBrief] = useState('');
+  const [triedToCreate, setTriedToCreate] = useState(false);
+
+  const briefLength = productBrief.trim().length;
+  const canCreateProject = briefLength >= 50;
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -28,6 +33,16 @@ export default function HomePage() {
       setProjects(getProjects());
     }
   }, []);
+
+  const handleCreateProject = useCallback(() => {
+    const trimmedBrief = productBrief.trim();
+    if (trimmedBrief.length < 50) {
+      setTriedToCreate(true);
+      return;
+    }
+
+    router.push(`/project/new?brief=${encodeURIComponent(trimmedBrief)}`);
+  }, [productBrief, router]);
 
   return (
     <div className="project-fullscreen">
@@ -48,12 +63,41 @@ export default function HomePage() {
               Describe what you are building, generate a page plan, refine sections in chat, and
               export clean HTML when it is ready.
             </p>
+            <div className="project-brief-card">
+              <label htmlFor="product-brief" className="project-brief-label">
+                Write few lines about your product
+              </label>
+              <textarea
+                id="product-brief"
+                value={productBrief}
+                onChange={(event) => {
+                  if (triedToCreate) setTriedToCreate(false);
+                  setProductBrief(event.target.value);
+                }}
+                placeholder="Describe what your product does, who it is for, and why it matters."
+                rows={5}
+                className="project-brief-textarea"
+              />
+              <div className="project-brief-footer">
+                <span
+                  className={`project-brief-hint ${canCreateProject ? 'valid' : 'invalid'} ${triedToCreate && !canCreateProject ? 'tried' : ''}`}
+                >
+                  {canCreateProject
+                    ? 'Looks good. We can generate the first draft from this.'
+                    : `Write at least 50 characters to create a project (${briefLength}/50).`}
+                </span>
+                <span className="project-brief-meter" aria-hidden="true">
+                  <span style={{ width: `${Math.min(100, (briefLength / 50) * 100)}%` }} />
+                </span>
+              </div>
+            </div>
             <button
-              onClick={() => router.push('/project/new')}
+              onClick={handleCreateProject}
               className="new-project-big-btn"
+              disabled={!canCreateProject}
             >
               <Plus size={20} />
-              <span>Start New Project</span>
+              <span>Create Project</span>
               <ArrowRight size={18} />
             </button>
           </div>

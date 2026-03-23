@@ -22,6 +22,7 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
     const router = useRouter();
     const searchParams = useSearchParams();
     const templateId = searchParams.get('template');
+    const initialBrief = searchParams.get('brief')?.trim() || '';
     const templateAppliedRef = useRef(false);
 
     const {
@@ -63,17 +64,18 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
         return element.isContentEditable || tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT';
     }, []);
 
-    // Redirect /project/new to /project/[actual-id] once ID is assigned
+    // Redirect /project/new to /project/[actual-id] once content exists
     useEffect(() => {
         if (
             id === 'new' &&
             currentProjectId &&
             currentProjectId !== 'new' &&
-            (!templateId || templateAppliedRef.current || blocks.length > 0)
+            blocks.length > 0
         ) {
-            router.replace(`/project/${currentProjectId}`);
+            handleSave();
+            window.history.replaceState(null, '', `/project/${currentProjectId}`);
         }
-    }, [blocks.length, currentProjectId, id, router, templateId]);
+    }, [blocks.length, currentProjectId, handleSave, id]);
 
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [versionsOpen, setVersionsOpen] = useState(false);
@@ -190,7 +192,9 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
     // Chat is full screen when no blocks have been generated yet
     const isChatFullScreen = blocks.length === 0;
 
-    const [projectDetails, setProjectDetails] = useState<ProjectDetails>({});
+    const [projectDetails, setProjectDetails] = useState<ProjectDetails>(() =>
+        initialBrief ? { productDescription: initialBrief } : {},
+    );
 
     // Build a context string from project details for the LLM
     const projectContext = useMemo(() => {
@@ -423,6 +427,7 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
                         onOpenSettings={() => setSettingsOpen(true)}
                         designStylePrompt={designStylePrompt}
                         projectContext={projectContext}
+                        initialSetupDetails={initialBrief ? { productDescription: initialBrief } : undefined}
                         onRestoreBlocks={reorderBlocks}
                         initialMessages={savedMessages}
                         onMessagesChange={setSavedMessages}

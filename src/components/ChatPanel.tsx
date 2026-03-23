@@ -100,6 +100,7 @@ interface ChatPanelProps {
   onOpenSettings: () => void;
   designStylePrompt: string | undefined;
   projectContext: string | undefined;
+  initialSetupDetails?: ProjectDetails;
   onRestoreBlocks: (blocks: Block[]) => void;
   initialMessages?: Message[];
   onMessagesChange?: (messages: Message[]) => void;
@@ -431,6 +432,7 @@ export default function ChatPanel({
   onOpenSettings,
   designStylePrompt,
   projectContext,
+  initialSetupDetails,
   onRestoreBlocks,
   initialMessages,
   onMessagesChange,
@@ -445,32 +447,47 @@ export default function ChatPanel({
   const [expandedMessages, setExpandedMessages] = useState<Set<string>>(
     new Set(),
   );
-  const [setupPhase, setSetupPhase] = useState<"details" | "ready">(
-    designStyle ? "ready" : "details",
+  const [setupDetails, setSetupDetails] = useState<ProjectDetails>(
+    initialSetupDetails || {},
   );
-  const [setupDetails, setSetupDetails] = useState<ProjectDetails>({});
-  const [triedToProceed, setTriedToProceed] = useState(false);
-  const [isAutoSelectingStyle, setIsAutoSelectingStyle] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastPersistedMessageIdsRef = useRef("");
   const lastPersistedMessageSignatureRef = useRef("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const selectDropdownRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const autoStartedFromInitialBriefRef = useRef(false);
 
   const selectedBlock = blocks.find((b) => b.id === selectedBlockId);
-  const selectedStyle = DESIGN_STYLES.find((style) => style.id === designStyle);
   const currentModel = getModel();
   const isUsingFreeModel =
     currentModel === "auto:free" || currentModel.endsWith(":free");
+  const homepageBrief =
+    setupDetails.productDescription?.trim() ||
+    initialSetupDetails?.productDescription?.trim() ||
+    "";
+  const pendingHomepageBrief =
+    messages.length === 0 ? homepageBrief : "";
   useEffect(() => {
     setMessages(initialMessages || []);
     setExpandedMessages(new Set());
     lastPersistedMessageIdsRef.current = "";
     lastPersistedMessageSignatureRef.current = "";
-    setSetupPhase(designStyle ? "ready" : "details");
-    setSetupDetails({});
+    autoStartedFromInitialBriefRef.current = false;
+    setSetupDetails(initialSetupDetails || {});
   }, [resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const initialProductDescription =
+      initialSetupDetails?.productDescription?.trim() || "";
+
+    if (initialProductDescription.length < 50) return;
+    if (blocks.length > 0 || messages.length > 0) return;
+
+    setSetupDetails((prev) =>
+      prev.productDescription?.trim() ? prev : initialSetupDetails || prev,
+    );
+  }, [blocks.length, initialSetupDetails, messages.length]);
 
   // Load initial messages when they change (e.g. project switch)
   useEffect(() => {
@@ -509,11 +526,6 @@ export default function ChatPanel({
     lastPersistedMessageIdsRef.current = messageIds;
     lastPersistedMessageSignatureRef.current = messageSignature;
   }, [messages, isLoading, onMessagesChange]);
-
-  // Removed: useEffect that auto-advanced setupPhase from "design" to "details"
-  // whenever designStyle was truthy. This caused the Back button to not work
-  // because clicking Back set phase to "design" but the effect immediately
-  // pushed it back to "details". handleDesignStyleSelect already handles this.
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1204,8 +1216,6 @@ export default function ChatPanel({
     if (productDescription.length < 50) return;
 
     try {
-      setIsAutoSelectingStyle(true);
-
       let resolvedStyle = designStyle;
       if (!resolvedStyle) {
         resolvedStyle = await requestStyleSelection(productDescription);
@@ -1221,16 +1231,12 @@ export default function ChatPanel({
       }
 
       onSetProjectDetails(setupDetails);
-      setSetupPhase("ready");
       await generateLandingPageFromDetails(resolvedStyle);
     } catch (error) {
       logger.error("Style selection", error);
       onSetDesignStyle("professional");
       onSetProjectDetails(setupDetails);
-      setSetupPhase("ready");
       await generateLandingPageFromDetails("professional");
-    } finally {
-      setIsAutoSelectingStyle(false);
     }
   }, [
     designStyle,
@@ -1239,6 +1245,23 @@ export default function ChatPanel({
     onSetProjectDetails,
     requestStyleSelection,
     setupDetails,
+  ]);
+
+  useEffect(() => {
+    const initialProductDescription = homepageBrief;
+
+    if (initialProductDescription.length < 50) return;
+    if (blocks.length > 0 || messages.length > 0 || isLoading) return;
+    if (autoStartedFromInitialBriefRef.current) return;
+
+    autoStartedFromInitialBriefRef.current = true;
+    void handleSetupComplete();
+  }, [
+    blocks.length,
+    handleSetupComplete,
+    homepageBrief,
+    isLoading,
+    messages.length,
   ]);
 
   const executeSectionPlan = useCallback(
@@ -1894,6 +1917,45 @@ export default function ChatPanel({
     setShowSelectDropdown(false);
   };
 
+  const getLoadingStatusMeta = () => {
+    switch (loadingStatus.phase) {
+      case "requesting":
+        return {
+          icon: <Link2 size={12} className="inline-icon" />,
+          label: "Connecting",
+          description: `Preparing your prompt with ${loadingStatus.model || "the active model"}.`,
+        };
+      case "generating":
+        return {
+          icon: <Zap size={12} className="inline-icon" />,
+          label: "Generating",
+          description: `${loadingStatus.model || "The model"} is writing and refining your section.`,
+        };
+      case "planning":
+        return {
+          icon: <ClipboardList size={12} className="inline-icon" />,
+          label: "Planning",
+          description:
+            "Mapping the page structure and sequencing the best sections.",
+        };
+      case "building":
+        return {
+          icon: <Hammer size={12} className="inline-icon" />,
+          label: "Building",
+          description: `Assembling section ${loadingStatus.sectionIndex || 1}/${loadingStatus.totalSections || 1}${loadingStatus.currentSection ? `: ${loadingStatus.currentSection}` : ""}.`,
+        };
+      default:
+        return isLoading
+          ? {
+              icon: <Loader2 size={12} className="inline-icon spin" />,
+              label: "Thinking",
+              description:
+                "Analyzing your request and choosing the best next step.",
+            }
+          : null;
+    }
+  };
+
   const renderLoadingStatus = () => {
     switch (loadingStatus.phase) {
       case "requesting":
@@ -1951,158 +2013,66 @@ export default function ChatPanel({
     }
   };
 
-  // === SETUP SCREENS ===
+  const renderInteractiveLoadingStatus = () => {
+    const meta = getLoadingStatusMeta();
+    if (!meta) return renderLoadingStatus();
 
-  if (setupPhase === "details" && blocks.length === 0) {
-    const productDescriptionLength = (
-      setupDetails.productDescription || ""
-    ).trim().length;
-    const canContinue = productDescriptionLength >= 50;
     return (
-      <div className={`chat-panel ${isFullScreen ? "full-screen" : ""}`}>
-        <div className="chat-messages">
-          <div className="chat-empty setup-form">
-            <div className="setup-progress" aria-label="Builder setup progress">
-              <span className="setup-progress-step active">1. Details</span>
-            </div>
-            <h3>Project Details</h3>
-            <p>
-              Provide the essentials so Crushable can plan stronger sections and
-              keep the first draft aligned with your product.
-            </p>
-            <div className="setup-fields">
-              <div className="setup-field">
-                <label>
-                  Brand / Company Name{" "}
-                  <span className="optional-tag">optional</span>
-                </label>
-                <input
-                  value={setupDetails.brandName || ""}
-                  onChange={(e) =>
-                    setSetupDetails((prev) => ({
-                      ...prev,
-                      brandName: e.target.value,
-                    }))
-                  }
-                  placeholder="e.g. Acme Inc."
-                />
-              </div>
-
-              <div className="setup-field">
-                <label>
-                  Hero Title <span className="optional-tag">optional</span>
-                </label>
-                <input
-                  value={setupDetails.title || ""}
-                  onChange={(e) =>
-                    setSetupDetails((prev) => ({
-                      ...prev,
-                      title: e.target.value,
-                    }))
-                  }
-                  placeholder="e.g. Build Faster, Ship Smarter"
-                />
-              </div>
-              <div className="setup-field">
-                <label>
-                  Subtitle / Description{" "}
-                  <span className="optional-tag">optional</span>
-                </label>
-                <input
-                  value={setupDetails.subtitle || ""}
-                  onChange={(e) =>
-                    setSetupDetails((prev) => ({
-                      ...prev,
-                      subtitle: e.target.value,
-                    }))
-                  }
-                  placeholder="e.g. The AI-powered platform for..."
-                />
-              </div>
-              <div className="setup-field">
-                <label>
-                  Primary CTA Button{" "}
-                  <span className="optional-tag">optional</span>
-                </label>
-                <input
-                  value={setupDetails.ctaText || ""}
-                  onChange={(e) =>
-                    setSetupDetails((prev) => ({
-                      ...prev,
-                      ctaText: e.target.value,
-                    }))
-                  }
-                  placeholder="e.g. Get Started Free"
-                />
-              </div>
-              <div className="setup-field">
-                <label>Write few lines about your product</label>
-                <textarea
-                  value={setupDetails.productDescription || ""}
-                  onChange={(e) => {
-                    setTriedToProceed(false);
-                    setSetupDetails((prev) => ({
-                      ...prev,
-                      productDescription: e.target.value,
-                    }));
-                  }}
-                  placeholder="Describe what your product does, who it is for, and why it matters."
-                  rows={4}
-                />
-                <span
-                  className={`setup-field-hint ${canContinue ? "valid" : "invalid"} ${triedToProceed && !canContinue ? "tried" : ""}`}
-                >
-                  {canContinue
-                    ? "Looks good. You can continue."
-                    : `Write at least 50 characters to proceed (${productDescriptionLength}/50).`}
-                </span>
-              </div>
-            </div>
-            <div className="setup-completion-meter" aria-hidden="true">
-              <span
-                style={{
-                  width: `${Math.min(100, (productDescriptionLength / 50) * 100)}%`,
-                }}
-              />
-            </div>
-            <div className="setup-actions">
-              <button
-                onClick={() => {
-                  if (!canContinue) {
-                    setTriedToProceed(true);
-                    return;
-                  }
-                  handleSetupComplete();
-                }}
-                className="setup-continue-btn"
-                disabled={!canContinue || isAutoSelectingStyle}
-              >
-                {isAutoSelectingStyle ? "Choosing style..." : "Continue"}
-              </button>
-            </div>
-          </div>
+      <div
+        className={`result-status streaming interactive phase-${loadingStatus.phase || "idle"}`}
+      >
+        <div className="result-status-visual" aria-hidden="true">
+          <span className="result-status-orb" />
+          <Loader2 size={14} className="spin result-status-spinner" />
+        </div>
+        <div className="result-status-copy">
+          <span className="result-status-label">
+            {meta.icon}
+            {meta.label}
+          </span>
+          <span className="result-status-description">{meta.description}</span>
+          <span className="result-status-progress" aria-hidden="true">
+            <span className="result-status-progress-bar" />
+          </span>
+          <span className="result-status-dots" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </span>
         </div>
       </div>
     );
-  }
+  };
 
   // === MAIN CHAT VIEW ===
   return (
     <div className={`chat-panel ${isFullScreen ? "full-screen" : ""}`}>
       <div className="chat-messages">
-        {messages.length === 0 && (
-          <div className="chat-empty">
-            <h3>Welcome to Crushable</h3>
-            <p>
-              Describe what you want to build and Crushable will stream sections
-              into the live preview as you go.
-            </p>
-            {designStyle && (
-              <div className="design-style-badge">
-                {selectedStyle?.label} style
+        {messages.length === 0 && pendingHomepageBrief && (
+          <>
+            <div className="chat-message user">
+              <div className="message-content">
+                <p>{pendingHomepageBrief}</p>
               </div>
-            )}
-          </div>
+            </div>
+            <div className="chat-message assistant is-streaming">
+              <div className="message-content">
+                <div className="assistant-response">
+                  <div className="typing-indicator">
+                    {renderInteractiveLoadingStatus() || (
+                      <div className="result-status streaming">
+                        <Loader2 size={14} className="spin" />
+                        <span>
+                          Reading your prompt and setting up the generation
+                          pipeline…
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
         )}
 
         {messages.map((message, messageIndex) => {
@@ -2120,7 +2090,10 @@ export default function ChatPanel({
           }
 
           return (
-            <div key={message.id} className={`chat-message ${message.role}`}>
+            <div
+              key={message.id}
+              className={`chat-message ${message.role} ${isCurrentlyStreaming ? "is-streaming" : ""}`}
+            >
               <div className="message-content">
                 {message.role === "user" ? (
                   <>
@@ -2230,10 +2203,12 @@ export default function ChatPanel({
                         )} */}
                       </>
                     ) : message.content ? (
-                      <div className="assistant-result">
+                      <div
+                        className={`assistant-result ${isCurrentlyStreaming ? "loading-active" : ""}`}
+                      >
                         <div className="result-summary">
                           {isCurrentlyStreaming ? (
-                            renderLoadingStatus() || (
+                            renderInteractiveLoadingStatus() || (
                               <div className="result-status streaming">
                                 <Loader2 size={14} className="spin" />
                                 <span>
@@ -2311,7 +2286,7 @@ export default function ChatPanel({
                       </div>
                     ) : isCurrentlyStreaming ? (
                       <div className="typing-indicator">
-                        {renderLoadingStatus() || (
+                        {renderInteractiveLoadingStatus() || (
                           <div className="result-status streaming">
                             <Loader2 size={14} className="spin" />
                             <span>

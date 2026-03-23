@@ -12,7 +12,11 @@ import {
   SectionCritique,
   ValidationIssue,
 } from "@/types";
-import { createBlock, ensureUniqueBlockIdentity, setRootSectionIdentifiers } from "@/lib/blocks";
+import {
+  createBlock,
+  ensureUniqueBlockIdentity,
+  setRootSectionIdentifiers,
+} from "@/lib/blocks";
 import {
   getApiKey,
   getGenerationStrategy,
@@ -67,7 +71,10 @@ import {
   formatParallelProgress,
   runWithConcurrency,
 } from "@/lib/generation";
-import { getComponentSummaries, renderComponentManifestItem } from "@/lib/component-registry";
+import {
+  getComponentSummaries,
+  renderComponentManifestItem,
+} from "@/lib/component-registry";
 import { inferIndustryFromContext, retrieveExamples } from "@/lib/rag";
 import { applyModificationOperationsToBlocks } from "@/lib/modification";
 import { applyPatch, summarizePatch } from "@/lib/patch";
@@ -79,7 +86,10 @@ interface ChatPanelProps {
   isFullScreen: boolean;
   resetKey: number;
   onAddBlock: (block: Block) => void;
-  onInsertBlockAfter: (afterBlockId: string | null | undefined, block: Block) => void;
+  onInsertBlockAfter: (
+    afterBlockId: string | null | undefined,
+    block: Block,
+  ) => void;
   onUpdateBlock: (id: string, html: string) => void;
   onRemoveBlock: (id: string) => void;
   onSelectBlock: (id: string | null) => void;
@@ -174,35 +184,6 @@ function looksLikeDiff(content: string): boolean {
   );
 }
 
-function isEditIntent(prompt: string, hasBlocks: boolean): boolean {
-  if (!hasBlocks) return false;
-  if (isExplanationIntent(prompt)) return false;
-  const editPatterns = [
-    /\b(change|modify|update|edit|fix|replace|move|remove|delete|hide|show)\b/i,
-    /\b(add|put|insert)\b.*\b(link|button|text|image|icon|color|padding|margin|border|shadow|font|size|style)\b/i,
-    /\b(make|set)\b.*\b(it|this|the|that)\b/i,
-    /\b(bigger|smaller|larger|wider|taller|shorter|darker|lighter|bolder|thinner)\b/i,
-    /\b(align|center|left|right)\b/i,
-    /\bto\s+(the\s+)?(button|heading|title|text|image|section|nav|header|footer)\b/i,
-    /\bcolor\b.*\bto\b/i,
-    /\bfont\b/i,
-    /\bbackground\b/i,
-    /\bgradient\b/i,
-    /\bspacing\b/i,
-  ];
-  const newPatterns = [
-    /\b(create|build|generate|design)\b.*\b(new\s+)?(section|component|block|page|landing)\b/i,
-    /\bnew\s+(hero|feature|pricing|contact|footer|header|testimonial|faq|cta)\b/i,
-  ];
-  for (const pattern of newPatterns) {
-    if (pattern.test(prompt)) return false;
-  }
-  for (const pattern of editPatterns) {
-    if (pattern.test(prompt)) return true;
-  }
-  return false;
-}
-
 function isMultiSectionIntent(prompt: string): boolean {
   const patterns = [
     /\b(landing\s*page|full\s*page|complete\s*page|entire\s*page|whole\s*page)\b/i,
@@ -210,38 +191,6 @@ function isMultiSectionIntent(prompt: string): boolean {
     /\bmultiple\s+sections\b/i,
   ];
   return patterns.some((p) => p.test(prompt));
-}
-
-function isAddSectionIntent(prompt: string, hasBlocks: boolean): boolean {
-  if (!hasBlocks) return false;
-  const patterns = [
-    /\b(add|create|insert|append|build|generate)\b.*\b(section|block|component)\b/i,
-    /\b(add|create|insert|append|build|generate)\b.*\b(hero|feature|features|pricing|testimonial|testimonials|faq|footer|header|cta|contact|about)\b/i,
-    /\bnew\s+(hero|feature|features|pricing|testimonial|testimonials|faq|footer|header|cta|contact|about)\b/i,
-  ];
-  return patterns.some((pattern) => pattern.test(prompt));
-}
-
-function isRemoveSectionIntent(prompt: string, hasBlocks: boolean): boolean {
-  if (!hasBlocks) return false;
-  const patterns = [
-    /\b(remove|delete)\b.*\b(section|block|component)\b/i,
-    /\b(remove|delete|hide)\b.*\b(hero|feature|features|pricing|testimonial|testimonials|faq|footer|header|cta|contact|about|section)\b/i,
-    /\b(delete|remove|hide)\s+(this|that|the)\s+(section|block)\b/i,
-  ];
-  return patterns.some((pattern) => pattern.test(prompt));
-}
-
-function isGlobalStyleEditIntent(prompt: string, hasBlocks: boolean): boolean {
-  if (!hasBlocks) return false;
-  const patterns = [
-    /\b(make|turn|restyle|redesign|refresh)\b.*\b(page|site|website|landing page)\b/i,
-    /\b(make|turn)\b.*\bmore\b.*\b(elegant|minimal|playful|professional)\b/i,
-    /\bchange\b.*\b(page|site|website)\b.*\bstyle\b/i,
-    /\bpage-wide\b/i,
-    /\bwhole\s+page\b/i,
-  ];
-  return patterns.some((pattern) => pattern.test(prompt));
 }
 
 function getModelLabel(modelId: string): string {
@@ -259,7 +208,6 @@ function getModelLabel(modelId: string): string {
   };
   return labels[modelId] || modelId;
 }
-
 
 function extractDetailedPlanSections(plan: string): PlannedSection[] {
   const lines = plan.split(/\r?\n/);
@@ -363,7 +311,9 @@ function buildSectionId(title: string, index: number): string {
   return slug || `section-${index + 1}`;
 }
 
-function buildSectionBlueprint(sections: PlannedSection[]): PlannedSectionBlueprint[] {
+function buildSectionBlueprint(
+  sections: PlannedSection[],
+): PlannedSectionBlueprint[] {
   const usedIds = new Set<string>();
 
   return sections.map((section, index) => {
@@ -430,11 +380,15 @@ function buildModificationContent(
     .filter(
       (
         operation,
-      ): operation is Extract<ModificationEngineOperation, { type: "update-block" }> =>
-        operation.type === "update-block",
+      ): operation is Extract<
+        ModificationEngineOperation,
+        { type: "update-block" }
+      > => operation.type === "update-block",
     )
     .map((operation) => {
-      const currentBlock = blocks.find((block) => block.id === operation.blockId);
+      const currentBlock = blocks.find(
+        (block) => block.id === operation.blockId,
+      );
       if (!currentBlock) return "";
       return buildUnifiedDiff(currentBlock.html, operation.html);
     })
@@ -447,8 +401,10 @@ function buildModificationContent(
   const insertedBlock = operations.find(
     (
       operation,
-    ): operation is Extract<ModificationEngineOperation, { type: "insert-block" }> =>
-      operation.type === "insert-block",
+    ): operation is Extract<
+      ModificationEngineOperation,
+      { type: "insert-block" }
+    > => operation.type === "insert-block",
   );
   if (insertedBlock) {
     return insertedBlock.block.html;
@@ -609,26 +565,31 @@ export default function ChatPanel({
     });
   };
 
-  const requestStyleSelection = useCallback(async (productDescription: string): Promise<string> => {
-    const response = await fetch('/api/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        prompt: productDescription,
-        mode: 'style-select',
-        apiKey: getApiKey(),
-        model: getModel(),
-      }),
-    });
+  const requestStyleSelection = useCallback(
+    async (productDescription: string): Promise<string> => {
+      const response = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: productDescription,
+          mode: "style-select",
+          apiKey: getApiKey(),
+          model: getModel(),
+        }),
+      });
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => null);
-      throw new Error(error?.error || 'Failed to select a design style.');
-    }
+      if (!response.ok) {
+        const error = await response.json().catch(() => null);
+        throw new Error(error?.error || "Failed to select a design style.");
+      }
 
-    const styleId = (await response.text()).trim();
-    return DESIGN_STYLES.some((style) => style.id === styleId) ? styleId : 'professional';
-  }, []);
+      const styleId = (await response.text()).trim();
+      return DESIGN_STYLES.some((style) => style.id === styleId)
+        ? styleId
+        : "professional";
+    },
+    [],
+  );
 
   const requestModelText = useCallback(
     async (payload: Record<string, unknown>): Promise<string> => {
@@ -672,7 +633,12 @@ export default function ChatPanel({
     async (
       payload: Omit<
         Record<string, unknown>,
-        "apiKey" | "model" | "designStylePrompt" | "projectContext" | "designStyle" | "blocks"
+        | "apiKey"
+        | "model"
+        | "designStylePrompt"
+        | "projectContext"
+        | "designStyle"
+        | "blocks"
       > & { requestKind: string },
     ): Promise<ModificationEngineResponse> => {
       const response = await fetch("/api/modification-engine", {
@@ -724,7 +690,13 @@ export default function ChatPanel({
         }
       });
     },
-    [onInsertBlockAfter, onRemoveBlock, onSelectBlock, onSetDesignStyle, onUpdateBlock],
+    [
+      onInsertBlockAfter,
+      onRemoveBlock,
+      onSelectBlock,
+      onSetDesignStyle,
+      onUpdateBlock,
+    ],
   );
 
   const getSectionExamples = useCallback(
@@ -747,15 +719,15 @@ export default function ChatPanel({
 
   const summarizeValidationIssues = useCallback((issues: ValidationIssue[]) => {
     if (issues.length === 0) {
-      return 'Validation complete — no issues found in the assembled page.';
+      return "Validation complete — no issues found in the assembled page.";
     }
 
     const preview = issues
       .slice(0, 3)
       .map((issue) => issue.message)
-      .join(' ');
+      .join(" ");
 
-    return `Validation found ${issues.length} issue${issues.length === 1 ? '' : 's'}: ${preview}`;
+    return `Validation found ${issues.length} issue${issues.length === 1 ? "" : "s"}: ${preview}`;
   }, []);
 
   const generateSection = useCallback(
@@ -853,14 +825,18 @@ export default function ChatPanel({
         templateSkeleton: template.skeleton,
         sectionRole: section.title,
       });
-      const values = parseJsonObjectResponse<Record<string, string>>(responseText);
+      const values =
+        parseJsonObjectResponse<Record<string, string>>(responseText);
       if (!values) {
         throw new Error(`Template fill failed for ${section.title}`);
       }
 
       return {
         summary: `Filled the ${template.name} template for ${section.title}.`,
-        html: setRootSectionIdentifiers(fillTemplateSkeleton(template.skeleton, values), section.id),
+        html: setRootSectionIdentifiers(
+          fillTemplateSkeleton(template.skeleton, values),
+          section.id,
+        ),
         raw: responseText,
       };
     },
@@ -884,7 +860,8 @@ export default function ChatPanel({
           sections: sections.map((section) => section.title),
           templateCatalog: buildTemplateCatalog(SECTION_TEMPLATES),
         });
-        const parsed = parseJsonObjectResponse<Record<string, string>>(responseText);
+        const parsed =
+          parseJsonObjectResponse<Record<string, string>>(responseText);
         return {
           ...fallbackSelections,
           ...(parsed || {}),
@@ -908,7 +885,8 @@ export default function ChatPanel({
           componentCatalog: buildComponentCatalog(getComponentSummaries()),
           sectionPlan: sections.map((section) => section.title),
         });
-        const manifest = parseJsonArrayResponse<ComponentManifestItem>(responseText);
+        const manifest =
+          parseJsonArrayResponse<ComponentManifestItem>(responseText);
         if (!manifest || manifest.length < sections.length) {
           return null;
         }
@@ -942,7 +920,9 @@ export default function ChatPanel({
       if (
         generationStrategy !== "html-only" &&
         selectedTemplateId &&
-        (generationStrategy === "template-first" || generationStrategy === "hybrid" || generationStrategy === "component-first")
+        (generationStrategy === "template-first" ||
+          generationStrategy === "hybrid" ||
+          generationStrategy === "component-first")
       ) {
         try {
           return await fillTemplateForSection(section, selectedTemplateId);
@@ -970,74 +950,93 @@ export default function ChatPanel({
     [fillTemplateForSection, generateSection, getSectionExamples],
   );
 
-  const runGenerationValidation = useCallback(async (candidateBlocks: Block[]) => {
-    const refinementLevel = getRefinementLevel();
-    const normalizedHtml = applyGlobalValidationFixes(generateFullHTML(candidateBlocks));
-    const issues = validateGeneratedHtml(normalizedHtml);
+  const runGenerationValidation = useCallback(
+    async (candidateBlocks: Block[]) => {
+      const refinementLevel = getRefinementLevel();
+      const normalizedHtml = applyGlobalValidationFixes(
+        generateFullHTML(candidateBlocks),
+      );
+      const issues = validateGeneratedHtml(normalizedHtml);
 
-    let nextBlocks = candidateBlocks.map((block) => ({ ...block }));
-    const appliedFixes: string[] = [];
+      let nextBlocks = candidateBlocks.map((block) => ({ ...block }));
+      const appliedFixes: string[] = [];
 
-    if (refinementLevel !== "off") {
-      const autoFixed = autoFixIssues(nextBlocks, issues);
-      nextBlocks = autoFixed.blocks;
-      appliedFixes.push(...autoFixed.applied);
-    }
+      if (refinementLevel !== "off") {
+        const autoFixed = autoFixIssues(nextBlocks, issues);
+        nextBlocks = autoFixed.blocks;
+        appliedFixes.push(...autoFixed.applied);
+      }
 
-    if (refinementLevel === "full") {
-      for (let index = 0; index < nextBlocks.length; index += 1) {
-        const block = nextBlocks[index];
-        const critique = await critiqueSection(block);
-        if (!critique) continue;
+      if (refinementLevel === "full") {
+        for (let index = 0; index < nextBlocks.length; index += 1) {
+          const block = nextBlocks[index];
+          const critique = await critiqueSection(block);
+          if (!critique) continue;
 
-        const scores = [
-          critique.visualAppeal,
-          critique.copyQuality,
-          critique.conversionPotential,
-          critique.mobileReadiness,
-        ];
-        if (scores.every((score) => score >= 6) || !critique.suggestedPrompt) {
-          continue;
+          const scores = [
+            critique.visualAppeal,
+            critique.copyQuality,
+            critique.conversionPotential,
+            critique.mobileReadiness,
+          ];
+          if (
+            scores.every((score) => score >= 6) ||
+            !critique.suggestedPrompt
+          ) {
+            continue;
+          }
+
+          const refinementPrompt = [
+            critique.suggestedPrompt,
+            critique.issues.length > 0
+              ? `Address these issues:\n- ${critique.issues.join("\n- ")}`
+              : "",
+          ]
+            .filter(Boolean)
+            .join("\n\n");
+
+          const refined = await generateSection(
+            refinementPrompt,
+            "edit",
+            block,
+          );
+          nextBlocks[index] = { ...block, html: refined.html };
+          appliedFixes.push(`Refined ${block.label} after critique.`);
         }
-
-        const refinementPrompt = [
-          critique.suggestedPrompt,
-          critique.issues.length > 0
-            ? `Address these issues:\n- ${critique.issues.join("\n- ")}`
-            : "",
-        ]
-          .filter(Boolean)
-          .join("\n\n");
-
-        const refined = await generateSection(refinementPrompt, "edit", block);
-        nextBlocks[index] = { ...block, html: refined.html };
-        appliedFixes.push(`Refined ${block.label} after critique.`);
       }
-    }
 
-    nextBlocks.forEach((block) => {
-      const original = candidateBlocks.find((candidate) => candidate.id === block.id);
-      if (original && original.html !== block.html) {
-        onUpdateBlock(block.id, block.html);
-      }
-    });
+      nextBlocks.forEach((block) => {
+        const original = candidateBlocks.find(
+          (candidate) => candidate.id === block.id,
+        );
+        if (original && original.html !== block.html) {
+          onUpdateBlock(block.id, block.html);
+        }
+      });
 
-    const summarySuffix =
-      appliedFixes.length > 0
-        ? ` Applied fixes: ${appliedFixes.slice(0, 3).join(" ")}`
-        : "";
+      const summarySuffix =
+        appliedFixes.length > 0
+          ? ` Applied fixes: ${appliedFixes.slice(0, 3).join(" ")}`
+          : "";
 
-    const validationMessage: Message = {
-      id: uuidv4(),
-      role: "assistant",
-      content: "",
-      summary: `${summarizeValidationIssues(issues)}${summarySuffix}`,
-      timestamp: Date.now(),
-    };
+      const validationMessage: Message = {
+        id: uuidv4(),
+        role: "assistant",
+        content: "",
+        summary: `${summarizeValidationIssues(issues)}${summarySuffix}`,
+        timestamp: Date.now(),
+      };
 
-    setMessages((prev) => [...prev, validationMessage]);
-    return nextBlocks;
-  }, [critiqueSection, generateSection, onUpdateBlock, summarizeValidationIssues]);
+      setMessages((prev) => [...prev, validationMessage]);
+      return nextBlocks;
+    },
+    [
+      critiqueSection,
+      generateSection,
+      onUpdateBlock,
+      summarizeValidationIssues,
+    ],
+  );
 
   async function generateLandingPageFromDetails(resolvedStyleId?: string) {
     if (isLoading) return;
@@ -1289,7 +1288,8 @@ export default function ChatPanel({
       };
 
       if (generationStrategy === "component-first") {
-        const composedBlocks = await composeSectionsFromComponents(sectionBlueprint);
+        const composedBlocks =
+          await composeSectionsFromComponents(sectionBlueprint);
         if (composedBlocks) {
           const uniqueBlocks = composedBlocks.reduce<Block[]>((acc, block) => {
             const nextBlock = ensureUniqueBlockIdentity(
@@ -1330,42 +1330,46 @@ export default function ChatPanel({
       const insertedBlocks: Block[] = [];
       let nextInsertIndex = 0;
 
-      await runWithConcurrency(sectionBlueprint, concurrencyLimit, async (section, index) => {
-        progressStates[index].status = "running";
-        setLoadingStatus({
-          phase: "building",
-          model: getModelLabel(model || "auto:free"),
-          currentSection: section.title,
-          sectionIndex: index + 1,
-          totalSections: sectionBlueprint.length,
-        });
-        updateTracker();
+      await runWithConcurrency(
+        sectionBlueprint,
+        concurrencyLimit,
+        async (section, index) => {
+          progressStates[index].status = "running";
+          setLoadingStatus({
+            phase: "building",
+            model: getModelLabel(model || "auto:free"),
+            currentSection: section.title,
+            sectionIndex: index + 1,
+            totalSections: sectionBlueprint.length,
+          });
+          updateTracker();
 
-        const result = await generatePlannedSection(
-          section,
-          index,
-          sectionBlueprint.length,
-          sectionMap,
-          templateSelections,
-        );
-        results[index] = result;
-        progressStates[index].status = "done";
-        updateTracker();
+          const result = await generatePlannedSection(
+            section,
+            index,
+            sectionBlueprint.length,
+            sectionMap,
+            templateSelections,
+          );
+          results[index] = result;
+          progressStates[index].status = "done";
+          updateTracker();
 
-        while (results[nextInsertIndex]) {
-          const candidateBlock = createBlock(
-            results[nextInsertIndex].html,
-            sectionBlueprint[nextInsertIndex].title,
-          );
-          const nextBlock = ensureUniqueBlockIdentity(
-            candidateBlock,
-            [...blocks, ...insertedBlocks].map((block) => block.id),
-          );
-          insertedBlocks.push(nextBlock);
-          onAddBlock(nextBlock);
-          nextInsertIndex += 1;
-        }
-      });
+          while (results[nextInsertIndex]) {
+            const candidateBlock = createBlock(
+              results[nextInsertIndex].html,
+              sectionBlueprint[nextInsertIndex].title,
+            );
+            const nextBlock = ensureUniqueBlockIdentity(
+              candidateBlock,
+              [...blocks, ...insertedBlocks].map((block) => block.id),
+            );
+            insertedBlocks.push(nextBlock);
+            onAddBlock(nextBlock);
+            nextInsertIndex += 1;
+          }
+        },
+      );
 
       await runGenerationValidation([...blocks, ...insertedBlocks]);
 
@@ -1380,7 +1384,10 @@ export default function ChatPanel({
         ),
       );
 
-      return results.filter((result): result is { summary: string; html: string } => Boolean(result));
+      return results.filter(
+        (result): result is { summary: string; html: string } =>
+          Boolean(result),
+      );
     },
     [
       blocks,
@@ -1470,108 +1477,17 @@ export default function ChatPanel({
       return;
     }
 
-    // Intent detection
-    let effectiveBlockId = selectedBlockId;
-    if (!selectedBlockId && blocks.length > 0 && isEditIntent(trimmed, true)) {
-      const lastBlock = blocks[blocks.length - 1];
-      logger.action("Intent detection: auto-selecting last block", {
-        autoSelectedBlock: lastBlock.label,
-      });
-      effectiveBlockId = lastBlock.id;
-      onSelectBlock(lastBlock.id);
-    }
-
-    // Smart block matching: find ALL blocks referenced in the prompt
-    // Uses fuzzy bidirectional matching (prompt word matches label word or vice versa)
-    const matchedBlocks: { block: Block; score: number }[] = [];
-    if (blocks.length > 1) {
-      const words = trimmed
-        .toLowerCase()
-        .split(/\s+/)
-        .filter((w) => w.length >= 3);
-
-      for (const block of blocks) {
-        const label = (block.label || "").toLowerCase();
-        const labelWords = label.split(/[\s\-_]+/).filter((w) => w.length >= 3);
-        const blockIdMatch =
-          block.html?.match(/data-block-id="([^"]+)"/)?.[1]?.toLowerCase() ||
-          "";
-        const blockIdWords = blockIdMatch
-          .split(/[\s\-_]+/)
-          .filter((w) => w.length >= 3);
-        const sectionId =
-          block.html?.match(/id="([^"]+)"/)?.[1]?.toLowerCase() || "";
-        const sectionIdWords = sectionId
-          .split(/[\s\-_]+/)
-          .filter((w) => w.length >= 3);
-
-        let score = 0;
-        for (const word of words) {
-          // Direct substring: "pricing" in "pricing table"
-          if (label.includes(word)) score += 3;
-          if (blockIdMatch.includes(word)) score += 3;
-          if (sectionId.includes(word)) score += 3;
-
-          // Bidirectional partial: "nav" in "navbar" OR "navbar" starts with "nav"
-          for (const lw of labelWords) {
-            if (lw.includes(word) || word.includes(lw)) score += 2;
-          }
-          for (const bw of blockIdWords) {
-            if (bw.includes(word) || word.includes(bw)) score += 2;
-          }
-          for (const sw of sectionIdWords) {
-            if (sw.includes(word) || word.includes(sw)) score += 2;
-          }
-        }
-
-        if (score > 0) {
-          matchedBlocks.push({ block, score });
-        }
-      }
-
-      matchedBlocks.sort((a, b) => b.score - a.score);
-    }
-
-    // Multi-section edit: if 2+ sections are referenced AND user isn't explicitly targeting one section
-    const isMultiEdit =
-      !selectedBlockId &&
-      matchedBlocks.length >= 2 &&
-      isEditIntent(trimmed, true);
-
-    // Single block redirect (only if not multi-edit)
-    if (!isMultiEdit && matchedBlocks.length > 0) {
-      const best = matchedBlocks[0];
-      if (best.block.id !== effectiveBlockId) {
-        logger.action("Smart block redirect", {
-          from: effectiveBlockId,
-          to: best.block.id,
-          label: best.block.label,
-          score: best.score,
-        });
-        effectiveBlockId = best.block.id;
-        onSelectBlock(best.block.id);
-      }
-    }
-
-    const currentSelectedBlock = effectiveBlockId
-      ? blocks.find((b) => b.id === effectiveBlockId)
+    const hasExistingBlocks = blocks.length > 0;
+    const currentSelectedBlock = selectedBlockId
+      ? blocks.find((b) => b.id === selectedBlockId)
       : undefined;
-    const mode = currentSelectedBlock ? "edit" : "new";
-    const isMultiSection =
-      !currentSelectedBlock && !isMultiEdit && isMultiSectionIntent(trimmed);
-    const isRemoveSection =
-      !isMultiEdit && isRemoveSectionIntent(trimmed, blocks.length > 0);
-    const isGlobalStyleEdit =
-      !currentSelectedBlock &&
-      !isMultiEdit &&
-      !isMultiSection &&
-      isGlobalStyleEditIntent(trimmed, blocks.length > 0);
-    const isAddSection =
-      !currentSelectedBlock &&
-      !isMultiEdit &&
-      !isMultiSection &&
-      !isGlobalStyleEdit &&
-      isAddSectionIntent(trimmed, blocks.length > 0);
+    const isMultiSection = !hasExistingBlocks && isMultiSectionIntent(trimmed);
+    const matchedBlocks: { block: Block; score: number }[] = [];
+    const isMultiEdit = false;
+    const isRemoveSection = false;
+    const isGlobalStyleEdit = false;
+    const isAddSection = false;
+    const mode: "new" | "edit" = currentSelectedBlock ? "edit" : "new";
 
     const userMessage: Message = {
       id: uuidv4(),
@@ -1596,13 +1512,16 @@ export default function ChatPanel({
     setMessages((prev) => [...prev, assistantMessage]);
 
     try {
-      if (isMultiEdit) {
-        const editBlocks = matchedBlocks.map((m) => m.block);
+      if (hasExistingBlocks) {
+        setLoadingStatus({
+          phase: "requesting",
+          model: getModelLabel(getModel() || "auto:free"),
+        });
+
         const result = await requestModification({
           prompt: trimmed,
-          requestKind: "multi-section-edit",
-          targetBlockIds: editBlocks.map((block) => block.id),
-          selectedBlockId: selectedBlockId,
+          requestKind: "auto",
+          selectedBlockId,
         });
         const candidateBlocks = applyModificationOperationsToBlocks(
           blocks,
@@ -1619,7 +1538,7 @@ export default function ChatPanel({
               ? {
                   ...m,
                   content: buildModificationContent(blocks, result.operations),
-                  summary: `Modification engine (${result.executorMode}) â€” ${result.summary}`,
+                  summary: `Modification engine (${result.resolvedRequestKind || "auto"} / ${result.executorMode}) — ${result.summary}`,
                 }
               : m,
           ),
@@ -1631,7 +1550,9 @@ export default function ChatPanel({
       if (isRemoveSection) {
         const targetBlock = currentSelectedBlock || matchedBlocks[0]?.block;
         if (!targetBlock) {
-          throw new Error("Select a section or mention one clearly to remove it.");
+          throw new Error(
+            "Select a section or mention one clearly to remove it.",
+          );
         }
 
         const result = await requestModification({
@@ -1770,9 +1691,9 @@ export default function ChatPanel({
           prev.map((m) =>
             m.id === assistantMessage.id
               ? {
-                ...m,
-                summary: `✏️ Editing ${editBlocks.length} sections: ${sectionNames}`,
-              }
+                  ...m,
+                  summary: `✏️ Editing ${editBlocks.length} sections: ${sectionNames}`,
+                }
               : m,
           ),
         );
@@ -1828,10 +1749,10 @@ export default function ChatPanel({
           prev.map((m) =>
             m.id === assistantMessage.id
               ? {
-                ...m,
-                content: `Edited ${editBlocks.length} sections`,
-                summary: `✅ Multi-edit complete — updated ${editBlocks.length} sections:\n${results.map((r, i) => `${i + 1}. ${r}`).join("\n")}`,
-              }
+                  ...m,
+                  content: `Edited ${editBlocks.length} sections`,
+                  summary: `✅ Multi-edit complete — updated ${editBlocks.length} sections:\n${results.map((r, i) => `${i + 1}. ${r}`).join("\n")}`,
+                }
               : m,
           ),
         );
@@ -1847,10 +1768,10 @@ export default function ChatPanel({
           prev.map((m) =>
             m.id === assistantMessage.id
               ? {
-                ...m,
-                content: `Built ${results.length} sections`,
-                summary: `Generated ${results.length} sections:\n${summaries}`,
-              }
+                  ...m,
+                  content: `Built ${results.length} sections`,
+                  summary: `Generated ${results.length} sections:\n${summaries}`,
+                }
               : m,
           ),
         );
@@ -1884,7 +1805,10 @@ export default function ChatPanel({
           mode === "edit" && currentSelectedBlock
             ? {
                 ...result,
-                html: setRootSectionIdentifiers(result.html, currentSelectedBlock.id),
+                html: setRootSectionIdentifiers(
+                  result.html,
+                  currentSelectedBlock.id,
+                ),
               }
             : result;
 
@@ -1892,13 +1816,16 @@ export default function ChatPanel({
           prev.map((m) =>
             m.id === assistantMessage.id
               ? {
-                ...m,
-                content:
-                  mode === "edit" && currentSelectedBlock
-                    ? buildUnifiedDiff(currentSelectedBlock.html, normalizedResult.html)
-                    : normalizedResult.raw,
-                summary: normalizedResult.summary,
-              }
+                  ...m,
+                  content:
+                    mode === "edit" && currentSelectedBlock
+                      ? buildUnifiedDiff(
+                          currentSelectedBlock.html,
+                          normalizedResult.html,
+                        )
+                      : normalizedResult.raw,
+                  summary: normalizedResult.summary,
+                }
               : m,
           ),
         );
@@ -1940,10 +1867,10 @@ export default function ChatPanel({
           prev.map((m) =>
             m.id === assistantMessage.id
               ? {
-                ...m,
-                content: `Error: ${errorMsg}`,
-                summary: `Error: ${errorMsg}`,
-              }
+                  ...m,
+                  content: `Error: ${errorMsg}`,
+                  summary: `Error: ${errorMsg}`,
+                }
               : m,
           ),
         );
@@ -2038,13 +1965,17 @@ export default function ChatPanel({
             <div className="setup-progress" aria-label="Builder setup progress">
               <span className="setup-progress-step active">1. Details</span>
             </div>
-            <h3>
-              Project Details
-            </h3>
-            <p>Provide the essentials so Crushable can plan stronger sections and keep the first draft aligned with your product.</p>
+            <h3>Project Details</h3>
+            <p>
+              Provide the essentials so Crushable can plan stronger sections and
+              keep the first draft aligned with your product.
+            </p>
             <div className="setup-fields">
               <div className="setup-field">
-                <label>Brand / Company Name  <span className="optional-tag">optional</span></label>
+                <label>
+                  Brand / Company Name{" "}
+                  <span className="optional-tag">optional</span>
+                </label>
                 <input
                   value={setupDetails.brandName || ""}
                   onChange={(e) =>
@@ -2055,11 +1986,12 @@ export default function ChatPanel({
                   }
                   placeholder="e.g. Acme Inc."
                 />
-
               </div>
 
               <div className="setup-field">
-                <label>Hero Title  <span className="optional-tag">optional</span></label>
+                <label>
+                  Hero Title <span className="optional-tag">optional</span>
+                </label>
                 <input
                   value={setupDetails.title || ""}
                   onChange={(e) =>
@@ -2072,7 +2004,10 @@ export default function ChatPanel({
                 />
               </div>
               <div className="setup-field">
-                <label>Subtitle / Description  <span className="optional-tag">optional</span></label>
+                <label>
+                  Subtitle / Description{" "}
+                  <span className="optional-tag">optional</span>
+                </label>
                 <input
                   value={setupDetails.subtitle || ""}
                   onChange={(e) =>
@@ -2085,7 +2020,10 @@ export default function ChatPanel({
                 />
               </div>
               <div className="setup-field">
-                <label>Primary CTA Button <span className="optional-tag">optional</span></label>
+                <label>
+                  Primary CTA Button{" "}
+                  <span className="optional-tag">optional</span>
+                </label>
                 <input
                   value={setupDetails.ctaText || ""}
                   onChange={(e) =>
@@ -2121,7 +2059,11 @@ export default function ChatPanel({
               </div>
             </div>
             <div className="setup-completion-meter" aria-hidden="true">
-              <span style={{ width: `${Math.min(100, (productDescriptionLength / 50) * 100)}%` }} />
+              <span
+                style={{
+                  width: `${Math.min(100, (productDescriptionLength / 50) * 100)}%`,
+                }}
+              />
             </div>
             <div className="setup-actions">
               <button
@@ -2147,12 +2089,14 @@ export default function ChatPanel({
   // === MAIN CHAT VIEW ===
   return (
     <div className={`chat-panel ${isFullScreen ? "full-screen" : ""}`}>
-
       <div className="chat-messages">
         {messages.length === 0 && (
           <div className="chat-empty">
             <h3>Welcome to Crushable</h3>
-            <p>Describe what you want to build and Crushable will stream sections into the live preview as you go.</p>
+            <p>
+              Describe what you want to build and Crushable will stream sections
+              into the live preview as you go.
+            </p>
             {designStyle && (
               <div className="design-style-badge">
                 {selectedStyle?.label} style
@@ -2169,9 +2113,7 @@ export default function ChatPanel({
           const shouldHideAssistantMessage =
             message.role === "assistant" &&
             (Boolean(message.plan) ||
-              (!isCurrentlyStreaming &&
-                !message.content &&
-                !message.summary));
+              (!isCurrentlyStreaming && !message.content && !message.summary));
 
           if (shouldHideAssistantMessage) {
             return null;
@@ -2190,7 +2132,12 @@ export default function ChatPanel({
                       </span>
                     )}
                     <p>{message.content}</p>
-                    {shouldShowRestoreButton(message, isLoading, messages, messageIndex) && (
+                    {shouldShowRestoreButton(
+                      message,
+                      isLoading,
+                      messages,
+                      messageIndex,
+                    ) && (
                       <button
                         className="checkpoint-restore-btn"
                         title="Restore to this checkpoint"
@@ -2213,7 +2160,9 @@ export default function ChatPanel({
                       </button>
                     )}
                     {formatMessageTime(message.timestamp) && (
-                      <div className="message-time">{formatMessageTime(message.timestamp)}</div>
+                      <div className="message-time">
+                        {formatMessageTime(message.timestamp)}
+                      </div>
                     )}
                   </>
                 ) : (
@@ -2331,7 +2280,7 @@ export default function ChatPanel({
                                 .map((line, index) => {
                                   const diffClass =
                                     line.startsWith("---") ||
-                                      line.startsWith("+++")
+                                    line.startsWith("+++")
                                       ? "meta"
                                       : line.startsWith("+")
                                         ? "add"
@@ -2374,7 +2323,9 @@ export default function ChatPanel({
                       </div>
                     ) : null}
                     {formatMessageTime(message.timestamp) && (
-                      <div className="message-time">{formatMessageTime(message.timestamp)}</div>
+                      <div className="message-time">
+                        {formatMessageTime(message.timestamp)}
+                      </div>
                     )}
                   </div>
                 )}
@@ -2406,7 +2357,8 @@ export default function ChatPanel({
         {selectedBlock && (
           <div className="selected-section-hint">
             <Pencil size={14} />
-            Editing <strong>{selectedBlock.label}</strong>. Your next prompt will only change this section until you clear the target.
+            Editing <strong>{selectedBlock.label}</strong>. Your next prompt
+            will only change this section until you clear the target.
           </div>
         )}
         <div className="input-row">
@@ -2423,73 +2375,78 @@ export default function ChatPanel({
             rows={2}
             disabled={isLoading}
           />
-                        {isUsingFreeModel && (
+          {isUsingFreeModel && (
+            <>
               <p className="model-warning-inline">
-                you are using free models which can be slow unexpectedly. please be patient
+                you are using free models which can be slow unexpectedly. please
+                be patient
               </p>
-            )}
-          <div className="input-actions">
+              <div className="input-actions">
+                <button
+                  onClick={onOpenSettings}
+                  className="model-badge-btn"
+                  title="Model"
+                >
+                  <Cpu size={12} />
+                  Model
+                </button>
 
-            <button onClick={onOpenSettings} className="model-badge-btn" title="Model">
-              <Cpu size={12} />
-              Model
-            </button>
-
-            <div className="select-block-wrapper" ref={selectDropdownRef}>
-              <button
-                onClick={() => setShowSelectDropdown(!showSelectDropdown)}
-                className={`select-block-btn ${selectedBlockId ? "has-selection" : ""}`}
-                title="Select block to edit"
-                disabled={blocks.length === 0}
-              >
-                {selectedBlock ? (
-                  <span className="selected-label">{selectedBlock.label}</span>
-                ) : (
-                  <span>Select Section</span>
-                )}
-                <ChevronDown size={14} />
-              </button>
-              {showSelectDropdown && (
-                <div className="select-dropdown">
+                <div className="select-block-wrapper" ref={selectDropdownRef}>
                   <button
-                    onClick={() => {
-                      onClearSelection();
-                      setShowSelectDropdown(false);
-                    }}
-                    className={`select-dropdown-item ${!selectedBlockId ? "active" : ""}`}
+                    onClick={() => setShowSelectDropdown(!showSelectDropdown)}
+                    className={`select-block-btn ${selectedBlockId ? "has-selection" : ""}`}
+                    title="Select block to edit"
+                    disabled={blocks.length === 0}
                   >
-                    <Plus size={14} /> New Section (no selection)
+                    {selectedBlock ? (
+                      <span className="selected-label">
+                        {selectedBlock.label}
+                      </span>
+                    ) : (
+                      <span>Select Section</span>
+                    )}
+                    <ChevronDown size={14} />
                   </button>
-                  {blocks.map((block) => (
-                    <button
-                      key={block.id}
-                      onClick={() => handleSelectBlock(block.id)}
-                      className={`select-dropdown-item ${selectedBlockId === block.id ? "active" : ""}`}
-                    >
-                      <Pencil size={12} /> {block.label}
-                    </button>
-                  ))}
+                  {showSelectDropdown && (
+                    <div className="select-dropdown">
+                      <button
+                        onClick={() => {
+                          onClearSelection();
+                          setShowSelectDropdown(false);
+                        }}
+                        className={`select-dropdown-item ${!selectedBlockId ? "active" : ""}`}
+                      >
+                        <Plus size={14} /> New Section (no selection)
+                      </button>
+                      {blocks.map((block) => (
+                        <button
+                          key={block.id}
+                          onClick={() => handleSelectBlock(block.id)}
+                          className={`select-dropdown-item ${selectedBlockId === block.id ? "active" : ""}`}
+                        >
+                          <Pencil size={12} /> {block.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-            <button
-              onClick={() => {
-                if (isLoading && abortControllerRef.current) {
-                  abortControllerRef.current.abort();
-                } else {
-                  handleSubmit();
-                }
-              }}
-              disabled={!isLoading && !input.trim()}
-              className={`send-button ${isLoading ? "cancel" : ""}`}
-              title={isLoading ? "Cancel request" : "Send"}
-            >
-              {isLoading ? <Square size={16} /> : <Send size={18} />}
-            </button>
-          </div>
-        </div>
-        <div className="input-shortcuts-hint">
-          Enter sends, Shift+Enter adds a new line, Ctrl/Cmd+S saves, Ctrl/Cmd+Z undoes, Esc clears selection.
+                <button
+                  onClick={() => {
+                    if (isLoading && abortControllerRef.current) {
+                      abortControllerRef.current.abort();
+                    } else {
+                      handleSubmit();
+                    }
+                  }}
+                  disabled={!isLoading && !input.trim()}
+                  className={`send-button ${isLoading ? "cancel" : ""}`}
+                  title={isLoading ? "Cancel request" : "Send"}
+                >
+                  {isLoading ? <Square size={16} /> : <Send size={18} />}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

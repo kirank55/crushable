@@ -186,12 +186,18 @@ export interface SectionCritique {
 }
 
 export type ModificationRequestKind =
+  | 'auto'
   | 'section-edit'
   | 'element-edit'
   | 'multi-section-edit'
   | 'add-section'
   | 'remove-section'
   | 'global-style-edit';
+
+export type ResolvedModificationRequestKind = Exclude<
+  ModificationRequestKind,
+  'auto'
+>;
 
 export type ModificationExecutorMode =
   | 'patch'
@@ -224,6 +230,7 @@ export interface ModificationEngineResponse {
   summary: string;
   executorMode: ModificationExecutorMode;
   operations: ModificationEngineOperation[];
+  resolvedRequestKind?: ResolvedModificationRequestKind;
 }
 
 export const FREE_AUTO_MODEL = 'auto:free';

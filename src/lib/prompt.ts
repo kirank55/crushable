@@ -148,6 +148,44 @@ Rules:
 - Return the FULL updated section using the exact format with ---SUMMARY--- and ---HTML--- sections.`;
 }
 
+export function buildModificationIntentPrompt(
+    userRequest: string,
+    blocksSummary: string,
+    selectedBlockId?: string | null,
+): string {
+    return `You are resolving a user's intent for modifying an EXISTING landing page.
+
+USER REQUEST:
+${userRequest}
+
+CURRENT PAGE SECTIONS:
+${blocksSummary}
+
+CURRENT SELECTION:
+${selectedBlockId ? `Block "${selectedBlockId}" is currently selected. Treat it as a helpful hint, not a mandate.` : 'No section is currently selected.'}
+
+Return ONLY JSON with this shape:
+{
+  "requestKind": "section-edit" | "multi-section-edit" | "add-section" | "remove-section" | "global-style-edit",
+  "selectedBlockId": "string or null",
+  "targetBlockIds": ["string"],
+  "summary": "short explanation",
+  "confidence": "high" | "medium" | "low"
+}
+
+Rules:
+- Choose the action that best matches the user's actual intent.
+- Prefer updating existing content when the request refers to content that is already present on the page.
+- Use the section summaries, headings, actions, landmarks, and text excerpts to identify the best target section(s).
+- Use "multi-section-edit" only when the user clearly wants coordinated changes across multiple existing sections.
+- Use "add-section" only when the user is asking for new section content that does not already exist.
+- Use "global-style-edit" only for page-wide stylistic changes.
+- For "section-edit" and "remove-section", return exactly one best target in "selectedBlockId".
+- For "multi-section-edit", return all relevant block ids in "targetBlockIds".
+- Never invent block ids.
+- If the current selection conflicts with the user's request, ignore it.`;
+}
+
 export function buildTemplateFillPrompt(
     skeleton: string,
     projectContext: string,

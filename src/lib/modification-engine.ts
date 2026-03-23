@@ -5,13 +5,14 @@ import {
     ModificationEngineRequest,
     ModificationEngineResponse,
     ModificationExecutorMode,
-    ModificationRequestKind,
+    ResolvedModificationRequestKind,
 } from '@/types';
 import {
     buildAddSectionPrompt,
     buildEditPrompt,
     buildElementEditPrompt,
     buildGlobalStyleEditPrompt,
+    buildModificationIntentPrompt,
     buildPatchEditPrompt,
     getElementEditSystemPrompt,
     getSystemPrompt,
@@ -38,7 +39,19 @@ type InternalModificationRequest = ModificationEngineRequest & {
     selectedElementHtml?: string;
 };
 
-function assertRequestKind(value: string): value is ModificationRequestKind {
+type ResolvedInternalModificationRequest = Omit<InternalModificationRequest, 'requestKind'> & {
+    requestKind: ResolvedModificationRequestKind;
+};
+
+type AutoModificationResolution = {
+    requestKind: ResolvedModificationRequestKind;
+    selectedBlockId?: string | null;
+    targetBlockIds?: string[];
+    summary?: string;
+    confidence?: 'high' | 'medium' | 'low';
+};
+
+function assertResolvedRequestKind(value: string): value is ResolvedModificationRequestKind {
     return [
         'section-edit',
         'element-edit',
@@ -131,6 +144,73 @@ function buildExistingSectionsSummary(blocks: Block[]): string {
         .join('\n');
 }
 
+function stripHtmlToText(html: string): string {
+    return html
+        .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, ' and ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function extractTagTextList(html: string, tagNames: string[], limit: number): string[] {
+    const pattern = new RegExp(`<(${tagNames.join('|')})\\b[^>]*>([\\s\\S]*?)<\\/\\1>`, 'gi');
+    const values: string[] = [];
+
+    for (const match of html.matchAll(pattern)) {
+        const text = stripHtmlToText(match[2] || '');
+        if (!text) continue;
+        values.push(text);
+        if (values.length >= limit) break;
+    }
+
+    return values;
+}
+
+function truncateText(value: string, maxLength: number): string {
+    if (value.length <= maxLength) return value;
+    return `${value.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
+function buildIntentBlocksSummary(blocks: Block[]): string {
+    return blocks
+        .map((block, index) => {
+            const rootId = extractRootSectionId(block.html) || block.id;
+            const headings = extractTagTextList(block.html, ['h1', 'h2', 'h3'], 3);
+            const actions = extractTagTextList(block.html, ['a', 'button'], 5);
+            const landmarks = [
+                /<nav\b/i.test(block.html) ? 'nav' : null,
+                /<header\b/i.test(block.html) ? 'header' : null,
+                /<footer\b/i.test(block.html) ? 'footer' : null,
+                /<form\b/i.test(block.html) ? 'form' : null,
+            ].filter(Boolean);
+            const excerpt = truncateText(stripHtmlToText(block.html), 220);
+
+            return [
+                `${index + 1}. blockId="${block.id}"`,
+                `label="${block.label}"`,
+                `rootId="${rootId}"`,
+                `landmarks=${landmarks.length > 0 ? `[${landmarks.join(', ')}]` : '[]'}`,
+                `headings=${headings.length > 0 ? JSON.stringify(headings) : '[]'}`,
+                `actions=${actions.length > 0 ? JSON.stringify(actions) : '[]'}`,
+                `text="${excerpt}"`,
+            ].join(' | ');
+        })
+        .join('\n');
+}
+
+function sanitizeResolvedBlockIds(blocks: Block[], blockIds?: string[]): string[] {
+    const validBlockIds = new Set(blocks.map((block) => block.id));
+    return Array.from(new Set((blockIds || []).filter((blockId) => validBlockIds.has(blockId))));
+}
+
+function sanitizeResolvedBlockId(blocks: Block[], blockId?: string | null): string | null {
+    if (!blockId) return null;
+    return blocks.some((block) => block.id === blockId) ? blockId : null;
+}
+
 function chooseSectionEditExecutorMode(prompt: string): ModificationExecutorMode {
     if (/\b(layout|restructure|redesign|overhaul|rebuild|rearrange|convert|turn into|make it look completely|full width|two column|three column|grid|hero layout)\b/i.test(prompt)) {
         return 'full-html';
@@ -161,6 +241,110 @@ async function requestModelText(params: {
         systemPrompt: params.systemPrompt,
         prompt: params.userPrompt,
     });
+}
+
+async function resolveAutoModificationRequest(
+    request: InternalModificationRequest,
+    runtime: EngineRuntime,
+): Promise<{ resolvedRequest: ResolvedInternalModificationRequest; summary?: string; confidence?: string }> {
+    if (request.requestKind !== 'auto') {
+        return { resolvedRequest: request as ResolvedInternalModificationRequest };
+    }
+
+    if (request.blocks.length === 0) {
+        throw new Error('Auto modification requires existing blocks.');
+    }
+
+    const responseText = await requestModelText({
+        apiKey: runtime.apiKey,
+        model: runtime.model,
+        systemPrompt: 'You resolve user intent for editing existing landing pages. Return only valid JSON.',
+        userPrompt: buildModificationIntentPrompt(
+            request.prompt,
+            buildIntentBlocksSummary(request.blocks),
+            request.selectedBlockId,
+        ),
+    });
+    const resolution = parseJsonObjectResponse<AutoModificationResolution>(responseText);
+
+    if (!resolution || !assertResolvedRequestKind(resolution.requestKind)) {
+        throw new Error('Could not determine how to apply that modification.');
+    }
+
+    const selectedHint = sanitizeResolvedBlockId(request.blocks, request.selectedBlockId);
+    const resolvedSelectedBlockId = sanitizeResolvedBlockId(request.blocks, resolution.selectedBlockId);
+    const resolvedTargetBlockIds = sanitizeResolvedBlockIds(request.blocks, resolution.targetBlockIds);
+
+    let resolvedRequest: ResolvedInternalModificationRequest;
+    switch (resolution.requestKind) {
+        case 'section-edit':
+        case 'remove-section': {
+            const targetBlockId =
+                resolvedSelectedBlockId ||
+                resolvedTargetBlockIds[0] ||
+                selectedHint ||
+                (request.blocks.length === 1 ? request.blocks[0].id : null);
+
+            if (!targetBlockId) {
+                throw new Error('Could not determine which section to modify. Select a section or describe it more specifically.');
+            }
+
+            resolvedRequest = {
+                ...request,
+                requestKind: resolution.requestKind,
+                selectedBlockId: targetBlockId,
+                targetBlockIds: [targetBlockId],
+            };
+            break;
+        }
+        case 'multi-section-edit': {
+            const targetBlockIds = resolvedTargetBlockIds.length > 0
+                ? resolvedTargetBlockIds
+                : (resolvedSelectedBlockId ? [resolvedSelectedBlockId] : []);
+
+            if (targetBlockIds.length <= 1) {
+                const fallbackBlockId = targetBlockIds[0] || selectedHint;
+                if (!fallbackBlockId) {
+                    throw new Error('Could not determine which sections to modify. Select the sections or describe them more specifically.');
+                }
+
+                resolvedRequest = {
+                    ...request,
+                    requestKind: 'section-edit',
+                    selectedBlockId: fallbackBlockId,
+                    targetBlockIds: [fallbackBlockId],
+                };
+                break;
+            }
+
+            resolvedRequest = {
+                ...request,
+                requestKind: 'multi-section-edit',
+                selectedBlockId: resolvedSelectedBlockId || targetBlockIds[0] || null,
+                targetBlockIds,
+            };
+            break;
+        }
+        case 'add-section':
+        case 'global-style-edit':
+            resolvedRequest = {
+                ...request,
+                requestKind: resolution.requestKind,
+                selectedBlockId: selectedHint,
+                targetBlockIds: undefined,
+            };
+            break;
+        case 'element-edit':
+            throw new Error('Auto intent resolution does not support element-edit requests.');
+        default:
+            throw new Error('Could not determine how to apply that modification.');
+    }
+
+    return {
+        resolvedRequest,
+        summary: resolution.summary,
+        confidence: resolution.confidence,
+    };
 }
 
 async function executePatchEdit(params: {
@@ -280,7 +464,7 @@ function validateModificationRequest(request: InternalModificationRequest): void
         throw new Error('Blocks are required.');
     }
 
-    if (!assertRequestKind(request.requestKind)) {
+    if (request.requestKind !== 'auto' && !assertResolvedRequestKind(request.requestKind)) {
         throw new Error('Unsupported modification request kind.');
     }
 
@@ -302,24 +486,29 @@ export async function runModificationEngine(
     runtime: EngineRuntime,
 ): Promise<ModificationEngineResponse> {
     validateModificationRequest(request);
+    const autoResolution = await resolveAutoModificationRequest(request, runtime);
+    const resolvedRequest = autoResolution.resolvedRequest;
+
     logger.action('Modification engine start', {
         requestKind: request.requestKind,
-        blockCount: request.blocks.length,
-        selectedBlockId: request.selectedBlockId || null,
-        targetBlockIds: request.targetBlockIds || [],
+        resolvedRequestKind: resolvedRequest.requestKind,
+        blockCount: resolvedRequest.blocks.length,
+        selectedBlockId: resolvedRequest.selectedBlockId || null,
+        targetBlockIds: resolvedRequest.targetBlockIds || [],
+        resolutionConfidence: autoResolution.confidence || null,
     });
 
     const operations: ModificationEngineResponse['operations'] = [];
     let summary = 'Applied modification.';
     let executorMode: ModificationExecutorMode = 'full-html';
 
-    if (request.requestKind === 'remove-section') {
-        const targetBlockId = request.selectedBlockId || request.targetBlockIds?.[0] || null;
+    if (resolvedRequest.requestKind === 'remove-section') {
+        const targetBlockId = resolvedRequest.selectedBlockId || resolvedRequest.targetBlockIds?.[0] || null;
         if (!targetBlockId) {
             throw new Error('No block selected for removal.');
         }
 
-        const block = getBlockById(request.blocks, targetBlockId);
+        const block = getBlockById(resolvedRequest.blocks, targetBlockId);
         if (!block) {
             throw new Error('Selected block was not found.');
         }
@@ -330,38 +519,38 @@ export async function runModificationEngine(
         );
         summary = `Removed ${block.label}.`;
         executorMode = 'remove';
-    } else if (request.requestKind === 'add-section') {
+    } else if (resolvedRequest.requestKind === 'add-section') {
         const result = await executeAddSection({
-            prompt: request.prompt,
-            blocks: request.blocks,
+            prompt: resolvedRequest.prompt,
+            blocks: resolvedRequest.blocks,
             runtime,
-            designStylePrompt: request.designStylePrompt,
-            projectContext: request.projectContext,
+            designStylePrompt: resolvedRequest.designStylePrompt,
+            projectContext: resolvedRequest.projectContext,
         });
-        const afterBlockId = request.selectedBlockId || request.blocks[request.blocks.length - 1]?.id || null;
+        const afterBlockId = resolvedRequest.selectedBlockId || resolvedRequest.blocks[resolvedRequest.blocks.length - 1]?.id || null;
         operations.push(
             { type: 'insert-block', afterBlockId, block: result.block },
             { type: 'select-block', blockId: result.block.id },
         );
         summary = result.summary;
         executorMode = 'full-html';
-    } else if (request.requestKind === 'element-edit') {
-        const block = getBlockById(request.blocks, request.selectedBlockId);
+    } else if (resolvedRequest.requestKind === 'element-edit') {
+        const block = getBlockById(resolvedRequest.blocks, resolvedRequest.selectedBlockId);
         if (!block) {
             throw new Error('Selected block was not found.');
         }
 
-        if (!request.selectedElementHtml) {
+        if (!resolvedRequest.selectedElementHtml) {
             throw new Error('selectedElementHtml is required for element edits.');
         }
 
         const result = await executeElementEdit({
-            prompt: request.prompt,
+            prompt: resolvedRequest.prompt,
             block,
-            selectedElementHtml: request.selectedElementHtml,
+            selectedElementHtml: resolvedRequest.selectedElementHtml,
             runtime,
-            designStylePrompt: request.designStylePrompt,
-            projectContext: request.projectContext,
+            designStylePrompt: resolvedRequest.designStylePrompt,
+            projectContext: resolvedRequest.projectContext,
         });
         const reviewedHtml = reviewUpdatedBlockHtml(result.html, block.id);
         operations.push(
@@ -370,20 +559,20 @@ export async function runModificationEngine(
         );
         summary = result.summary;
         executorMode = 'element-html';
-    } else if (request.requestKind === 'global-style-edit') {
-        const nextStyleId = inferStyleIdFromPrompt(request.prompt);
+    } else if (resolvedRequest.requestKind === 'global-style-edit') {
+        const nextStyleId = inferStyleIdFromPrompt(resolvedRequest.prompt);
         const nextStylePrompt = nextStyleId
             ? DESIGN_STYLES.find((style) => style.id === nextStyleId)?.prompt
-            : request.designStylePrompt;
+            : resolvedRequest.designStylePrompt;
 
         const updateOperations: ModificationEngineResponse['operations'] = [];
-        for (const block of request.blocks) {
+        for (const block of resolvedRequest.blocks) {
             const result = await executeFullBlockEdit({
-                prompt: request.prompt,
+                prompt: resolvedRequest.prompt,
                 block,
                 runtime,
                 designStylePrompt: nextStylePrompt,
-                projectContext: request.projectContext,
+                projectContext: resolvedRequest.projectContext,
                 globalStyle: true,
             });
             updateOperations.push({
@@ -397,16 +586,16 @@ export async function runModificationEngine(
         if (nextStyleId) {
             operations.push({ type: 'set-design-style', designStyle: nextStyleId });
         }
-        if (request.selectedBlockId) {
-            operations.push({ type: 'select-block', blockId: request.selectedBlockId });
+        if (resolvedRequest.selectedBlockId) {
+            operations.push({ type: 'select-block', blockId: resolvedRequest.selectedBlockId });
         }
         summary = nextStyleId
             ? `Updated the page to the ${DESIGN_STYLES.find((style) => style.id === nextStyleId)?.label || nextStyleId} style.`
             : 'Updated the page styling across existing sections.';
         executorMode = 'full-html';
-    } else if (request.requestKind === 'multi-section-edit') {
-        const targetBlocks = (request.targetBlockIds || [])
-            .map((blockId) => getBlockById(request.blocks, blockId))
+    } else if (resolvedRequest.requestKind === 'multi-section-edit') {
+        const targetBlocks = (resolvedRequest.targetBlockIds || [])
+            .map((blockId) => getBlockById(resolvedRequest.blocks, blockId))
             .filter((block): block is Block => Boolean(block));
 
         if (targetBlocks.length === 0) {
@@ -415,13 +604,13 @@ export async function runModificationEngine(
 
         let usedFullRewrite = false;
         for (const block of targetBlocks) {
-            const mode = chooseSectionEditExecutorMode(request.prompt);
+            const mode = chooseSectionEditExecutorMode(resolvedRequest.prompt);
             let result: { html: string; summary: string };
 
             if (mode === 'patch') {
                 try {
                     result = await executePatchEdit({
-                        prompt: request.prompt,
+                        prompt: resolvedRequest.prompt,
                         block,
                         runtime,
                     });
@@ -429,21 +618,21 @@ export async function runModificationEngine(
                     logger.error('Modification engine multi-edit patch fallback', error);
                     usedFullRewrite = true;
                     result = await executeFullBlockEdit({
-                        prompt: `This is a multi-section edit. Update only the "${block.label}" section while keeping other targeted sections conceptually aligned.\n\nUser request: ${request.prompt}`,
+                        prompt: `This is a multi-section edit. Update only the "${block.label}" section while keeping other targeted sections conceptually aligned.\n\nUser request: ${resolvedRequest.prompt}`,
                         block,
                         runtime,
-                        designStylePrompt: request.designStylePrompt,
-                        projectContext: request.projectContext,
+                        designStylePrompt: resolvedRequest.designStylePrompt,
+                        projectContext: resolvedRequest.projectContext,
                     });
                 }
             } else {
                 usedFullRewrite = true;
                 result = await executeFullBlockEdit({
-                    prompt: request.prompt,
+                    prompt: resolvedRequest.prompt,
                     block,
                     runtime,
-                    designStylePrompt: request.designStylePrompt,
-                    projectContext: request.projectContext,
+                    designStylePrompt: resolvedRequest.designStylePrompt,
+                    projectContext: resolvedRequest.projectContext,
                 });
             }
 
@@ -454,24 +643,24 @@ export async function runModificationEngine(
             });
         }
 
-        if (request.selectedBlockId) {
-            operations.push({ type: 'select-block', blockId: request.selectedBlockId });
+        if (resolvedRequest.selectedBlockId) {
+            operations.push({ type: 'select-block', blockId: resolvedRequest.selectedBlockId });
         }
         summary = `Updated ${targetBlocks.length} sections.`;
         executorMode = usedFullRewrite ? 'full-html' : 'patch';
     } else {
-        const block = getBlockById(request.blocks, request.selectedBlockId);
+        const block = getBlockById(resolvedRequest.blocks, resolvedRequest.selectedBlockId);
         if (!block) {
             throw new Error('Selected block was not found.');
         }
 
-        const preferredMode = chooseSectionEditExecutorMode(request.prompt);
+        const preferredMode = chooseSectionEditExecutorMode(resolvedRequest.prompt);
         let result: { html: string; summary: string };
 
         if (preferredMode === 'patch') {
             try {
                 result = await executePatchEdit({
-                    prompt: request.prompt,
+                    prompt: resolvedRequest.prompt,
                     block,
                     runtime,
                 });
@@ -479,21 +668,21 @@ export async function runModificationEngine(
             } catch (error) {
                 logger.error('Modification engine section patch fallback', error);
                 result = await executeFullBlockEdit({
-                    prompt: request.prompt,
+                    prompt: resolvedRequest.prompt,
                     block,
                     runtime,
-                    designStylePrompt: request.designStylePrompt,
-                    projectContext: request.projectContext,
+                    designStylePrompt: resolvedRequest.designStylePrompt,
+                    projectContext: resolvedRequest.projectContext,
                 });
                 executorMode = 'full-html';
             }
         } else {
             result = await executeFullBlockEdit({
-                prompt: request.prompt,
+                prompt: resolvedRequest.prompt,
                 block,
                 runtime,
-                designStylePrompt: request.designStylePrompt,
-                projectContext: request.projectContext,
+                designStylePrompt: resolvedRequest.designStylePrompt,
+                projectContext: resolvedRequest.projectContext,
             });
             executorMode = 'full-html';
         }
@@ -509,7 +698,7 @@ export async function runModificationEngine(
         summary = result.summary;
     }
 
-    const nextBlocks = applyModificationOperationsToBlocks(request.blocks, operations);
+    const nextBlocks = applyModificationOperationsToBlocks(resolvedRequest.blocks, operations);
     assertUniqueRootIds(nextBlocks);
 
     if (nextBlocks.some((block) => !extractBlockIdFromHtml(block.html))) {
@@ -518,13 +707,15 @@ export async function runModificationEngine(
 
     logger.action('Modification engine complete', {
         requestKind: request.requestKind,
+        resolvedRequestKind: resolvedRequest.requestKind,
         executorMode,
         operationCount: operations.length,
     });
 
     return {
-        summary,
+        summary: autoResolution.summary ? `${summary} ${autoResolution.summary}`.trim() : summary,
         executorMode,
         operations,
+        resolvedRequestKind: resolvedRequest.requestKind,
     };
 }

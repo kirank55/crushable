@@ -1,6 +1,7 @@
 export function formatRelativeDate(timestamp: number): string {
   const date = new Date(timestamp);
   const now = new Date();
+
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);

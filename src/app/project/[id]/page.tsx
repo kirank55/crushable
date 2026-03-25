@@ -6,6 +6,8 @@ import ChatPanel from '@/components/ChatPanel';
 import PreviewPanel from '@/components/PreviewPanel';
 import VersionsPanel from '@/components/VersionsPanel';
 
+ export const runtime = 'edge';
+
 export default function BuilderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [versionsOpen, setVersionsOpen] = useState(false);

@@ -1,20 +1,55 @@
 'use client';
 
-import { useState } from 'react';
-import { Plus, ArrowRight, Layers3, Sparkles, MessageSquareText, Code2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { v4 as uuidv4 } from 'uuid';
+import { Plus, ArrowRight, Layers3, Sparkles, MessageSquareText, Code2, Clock, Trash2 } from 'lucide-react';
+import { getProjects, saveProject, deleteProject } from '@/lib/storage';
+import { formatRelativeDate } from '@/lib/date';
+import { Project } from '@/types';
 
 export default function HomePage() {
-
+  const router = useRouter();
   const [productBrief, setProductBrief] = useState('');
+  const [recentProjects, setRecentProjects] = useState<Project[]>([]);
+  const [triedToCreate, setTriedToCreate] = useState(false);
 
   const briefLength = productBrief.trim().length;
   const canCreateProject = briefLength >= 50;
 
-  const handleCreateProject = () => {
-    const trimmedBrief = productBrief.trim();
+  useEffect(() => {
+    setRecentProjects(getProjects().slice(0, 6));
+  }, []);
 
-    // Phase 1: no routing — placeholder alert
-    alert(`Project brief accepted (${trimmedBrief.length} chars). Routing will be wired in Phase 3.`);
+  const handleCreateProject = () => {
+    if (!canCreateProject) {
+      setTriedToCreate(true);
+      return;
+    }
+    const id = uuidv4();
+    const project: Project = {
+      id,
+      name: 'Untitled Project',
+      blocks: [],
+      messages: [
+        {
+          id: uuidv4(),
+          role: 'user',
+          content: productBrief.trim(),
+          timestamp: Date.now(),
+        },
+      ],
+      updatedAt: Date.now(),
+    };
+    saveProject(project);
+    router.push(`/project/${id}`);
+  };
+
+  const handleDeleteProject = (e: React.MouseEvent, id: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    deleteProject(id);
+    setRecentProjects((prev) => prev.filter((p) => p.id !== id));
   };
 
   return (
@@ -36,14 +71,17 @@ export default function HomePage() {
               Describe what you are building, generate a page plan, refine sections in chat, and
               export clean HTML when it is ready.
             </p>
-            <div className="project-brief-card">
+            <div className={`project-brief-card ${triedToCreate && !canCreateProject ? 'error' : ''}`}>
               <label htmlFor="product-brief" className="project-brief-label">
                 Write few lines about your product
               </label>
               <textarea
                 id="product-brief"
                 value={productBrief}
-                onChange={(event) => setProductBrief(event.target.value)}
+                onChange={(event) => {
+                  setProductBrief(event.target.value);
+                  if (triedToCreate) setTriedToCreate(false);
+                }}
                 placeholder="Describe what your product does, who it is for, and why it matters."
                 rows={5}
                 className="project-brief-textarea"
@@ -125,7 +163,42 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* Recent Projects grid will be added in Phase 3 when storage is wired */}
+        {recentProjects.length > 0 && (
+          <div className="recent-projects-section">
+            <div className="recent-projects-header">
+              <Clock size={16} />
+              <h3>Recent Projects</h3>
+            </div>
+            <div className="recent-projects-grid">
+              {recentProjects.map((project) => (
+                <div
+                  key={project.id}
+                  className="project-card"
+                  onClick={() => router.push(`/project/${project.id}`)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => e.key === 'Enter' && router.push(`/project/${project.id}`)}
+                >
+                  <div className="project-card-body">
+                    <span className="project-card-name">{project.name}</span>
+                    <span className="project-card-meta">
+                      {project.blocks.length} section{project.blocks.length !== 1 ? 's' : ''} ·{' '}
+                      {formatRelativeDate(project.updatedAt)}
+                    </span>
+                  </div>
+                  <button
+                    className="project-card-delete"
+                    onClick={(e) => handleDeleteProject(e, project.id)}
+                    title="Delete project"
+                    aria-label="Delete project"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="project-footer-actions">
           <span className="settings-link-note">

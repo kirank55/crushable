@@ -1,32 +1,47 @@
 'use client';
 
-import { useState, use } from 'react';
+import { use, useState } from 'react';
+import { usePageState } from '@/hooks/usePageState';
 import Toolbar from '@/components/Toolbar';
 import ChatPanel from '@/components/ChatPanel';
 import PreviewPanel from '@/components/PreviewPanel';
 import VersionsPanel from '@/components/VersionsPanel';
 
- export const runtime = 'edge';
+export const runtime = 'edge';
 
 export default function BuilderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [versionsOpen, setVersionsOpen] = useState(false);
 
-  // Chat is full screen when no blocks have been generated yet (always true in Phase 2)
-  const isChatFullScreen = true;
+  const state = usePageState(id);
+  const isChatFullScreen = state.blocks.length === 0;
 
   return (
     <div className="builder-layout">
-      <Toolbar projectName="Untitled Project" />
+      <Toolbar
+        projectName={state.projectName}
+        isDirty={state.isDirty}
+        onSave={state.handleSave}
+        onRename={state.handleRename}
+        onVersionsOpen={() => setVersionsOpen(!versionsOpen)}
+      />
 
       <div className="builder-main">
-        <ChatPanel isFullScreen={isChatFullScreen} />
-        {!isChatFullScreen && <PreviewPanel />}
+        <ChatPanel
+          isFullScreen={isChatFullScreen}
+          messages={state.savedMessages}
+          onMessagesChange={state.setSavedMessages}
+        />
+        {!isChatFullScreen && <PreviewPanel blocks={state.blocks} />}
       </div>
 
       <VersionsPanel
         isOpen={versionsOpen}
         onClose={() => setVersionsOpen(false)}
+        versions={state.versions}
+        currentVersionIndex={state.currentVersionIndex}
+        onLoadVersion={state.loadVersion}
+        onRestoreCurrent={state.restoreCurrentBlocks}
       />
     </div>
   );

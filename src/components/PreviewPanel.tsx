@@ -1,7 +1,12 @@
 'use client';
 
-export default function PreviewPanel() {
-  const emptyStateHtml = `<!DOCTYPE html>
+import { Block } from '@/types';
+
+interface PreviewPanelProps {
+  blocks: Block[];
+}
+
+const EMPTY_STATE_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -29,13 +34,26 @@ export default function PreviewPanel() {
 </body>
 </html>`;
 
+function buildPreviewHtml(blocks: Block[]): string {
+  const visibleBlocks = blocks.filter((b) => b.visible !== false);
+  if (visibleBlocks.length === 0) return EMPTY_STATE_HTML;
+  const body = visibleBlocks.map((b) => b.html).join('\n');
+  return `<!DOCTYPE html><html lang="en"><head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+</head><body>${body}</body></html>`;
+}
+
+export default function PreviewPanel({ blocks }: PreviewPanelProps) {
+  const srcDoc = buildPreviewHtml(blocks);
+
   return (
     <div className="preview-panel">
       <div className="preview-container">
         <div className="preview-stage desktop">
           <div className="preview-frame">
             <iframe
-              srcDoc={emptyStateHtml}
+              srcDoc={srcDoc}
               title="Page Preview"
               sandbox="allow-scripts allow-same-origin"
               className="preview-iframe"

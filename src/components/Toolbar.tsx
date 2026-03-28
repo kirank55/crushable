@@ -7,28 +7,38 @@ import {
   Settings,
   History,
   PanelLeftClose,
-  MessageSquare,
   Eye,
   Code,
   Terminal,
+  Check,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 interface ToolbarProps {
   projectName: string;
+  isDirty: boolean;
+  onSave: () => void;
+  onRename: (name: string) => void;
+  onVersionsOpen: () => void;
 }
 
-export default function Toolbar({ projectName }: ToolbarProps) {
+export default function Toolbar({ projectName, isDirty, onSave, onRename, onVersionsOpen }: ToolbarProps) {
+  const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(projectName);
 
   const handleRename = () => {
     setIsEditing(false);
+    const trimmed = editName.trim();
+    if (trimmed && trimmed !== projectName) {
+      onRename(trimmed);
+    }
   };
 
   return (
     <div className="toolbar">
       <div className="toolbar-left">
-        <button className="toolbar-btn" title="Back to Projects">
+        <button className="toolbar-btn" title="Back to Projects" onClick={() => router.push('/')}>
           <ArrowLeft size={18} />
           <span className="btn-label">Projects</span>
         </button>
@@ -55,13 +65,20 @@ export default function Toolbar({ projectName }: ToolbarProps) {
               {projectName}
             </button>
           )}
-          <div className="save-state clean">
-            <span className="save-state-label">All changes saved</span>
+          <div className={`save-state ${isDirty ? 'dirty' : 'clean'}`}>
+            {isDirty ? (
+              <span className="save-state-label">Unsaved changes</span>
+            ) : (
+              <>
+                <Check size={12} />
+                <span className="save-state-label">All changes saved</span>
+              </>
+            )}
           </div>
         </div>
 
         <div className="toolbar-actions toolbar-actions-inline">
-          <button className="header-action-btn" title="Versions">
+          <button className="header-action-btn" title="Versions" onClick={onVersionsOpen}>
             <History size={16} />
           </button>
           <button className="header-action-btn" title="Hide Chat">
@@ -93,7 +110,12 @@ export default function Toolbar({ projectName }: ToolbarProps) {
             <Settings size={18} />
             <span className="btn-label">Model</span>
           </button>
-          <button className="toolbar-btn save-btn" title="Save">
+          <button
+            className="toolbar-btn save-btn"
+            title="Save"
+            onClick={onSave}
+            disabled={!isDirty}
+          >
             <Save size={18} />
             <span className="btn-label">Save now</span>
           </button>

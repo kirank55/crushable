@@ -4515,3 +4515,380 @@ h3,
   border-color: rgba(208, 114, 114, 0.32);
   box-shadow: 0 0 0 3px rgba(208, 114, 114, 0.08);
 }
+
+/* ========================================
+   Phase 5 — Chat Input Area
+   ======================================== */
+
+.chat-input-area {
+  padding: 10px 14px 14px;
+  border-top: 1px solid var(--border);
+}
+
+.input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 10px 12px;
+  transition: border-color var(--transition);
+}
+
+.input-row:focus-within {
+  border-color: var(--border-light);
+}
+
+.input-row textarea {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.5;
+  min-height: 22px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.input-row textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.input-row textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.input-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.send-button,
+.stop-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.send-button {
+  background: #f0f0f0;
+  color: #111;
+}
+
+.send-button:hover:not(:disabled) {
+  background: #ffffff;
+  transform: scale(1.06);
+}
+
+.send-button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.stop-button {
+  background: rgba(208, 114, 114, 0.18);
+  color: #e0a6a6;
+  border: 1px solid rgba(208, 114, 114, 0.28);
+}
+
+.stop-button:hover {
+  background: rgba(208, 114, 114, 0.28);
+}
+
+.stop-square {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+/* Chat full-screen (empty state, no blocks yet) */
+.chat-panel.full-screen {
+  flex: 1;
+  width: 100%;
+  min-width: unset;
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+/* Chat header status pill */
+.chat-header-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+/* ========================================
+   Phase 5 — Generation Progress Card
+   ======================================== */
+
+.generation-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  animation: slideUp 0.2s ease;
+}
+
+.generation-progress-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+
+.generation-progress-bar-wrap {
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  margin-left: 4px;
+  overflow: hidden;
+}
+
+.generation-progress-bar {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(255,255,255,0.3), rgba(255,255,255,0.85));
+  transition: width 0.4s ease;
+}
+
+.section-progress-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.section-progress-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 3px 0;
+  transition: color 0.2s ease;
+}
+
+.section-progress-item.generating {
+  color: var(--text-secondary);
+}
+
+.section-progress-item.done {
+  color: rgba(134, 239, 172, 0.85);
+}
+
+.section-progress-item.error {
+  color: var(--error);
+}
+
+.section-progress-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pending-dot {
+  display: block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255,255,255,0.18);
+  flex-shrink: 0;
+}
+
+.done-icon { color: #86efac; flex-shrink: 0; }
+.error-icon { color: var(--error); flex-shrink: 0; }
+
+/* ========================================
+   Phase 5 — Preview with Sections Layout
+   ======================================== */
+
+.preview-with-sections {
+  display: flex;
+  flex: 1;
+  gap: 10px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* ========================================
+   Phase 5 — Section Panel
+   ======================================== */
+
+.section-panel {
+  width: 200px;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  background: rgba(18, 18, 18, 0.96);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.section-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  gap: 8px;
+}
+
+.section-panel-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.section-panel-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+.section-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+  list-style: none;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.section-list::-webkit-scrollbar { width: 3px; }
+.section-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+.section-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 8px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all var(--transition);
+  border: 1px solid transparent;
+}
+
+.section-item:hover {
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+
+.section-item.selected {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border-light);
+}
+
+.section-item.hidden-block {
+  opacity: 0.45;
+}
+
+.section-drag-handle {
+  color: var(--text-muted);
+  cursor: grab;
+  flex-shrink: 0;
+  display: flex;
+}
+
+.section-item-label {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.section-item.selected .section-item-label {
+  color: var(--text-primary);
+}
+
+.section-item-actions {
+  display: none;
+  align-items: center;
+  gap: 2px;
+}
+
+.section-item:hover .section-item-actions {
+  display: flex;
+}
+
+.section-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all var(--transition);
+}
+
+.section-action-btn:hover {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
+.section-action-btn.danger:hover {
+  background: rgba(208, 114, 114, 0.18);
+  color: var(--error);
+}
+
+/* ========================================
+   Phase 5 — Spin animation + slide up
+   ======================================== */
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.spin-icon {
+  animation: spin 0.9s linear infinite;
+  flex-shrink: 0;
+}

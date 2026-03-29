@@ -38,10 +38,31 @@ function buildPreviewHtml(blocks: Block[]): string {
   const visibleBlocks = blocks.filter((b) => b.visible !== false);
   if (visibleBlocks.length === 0) return EMPTY_STATE_HTML;
   const body = visibleBlocks.map((b) => b.html).join('\n');
-  return `<!DOCTYPE html><html lang="en"><head>
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-</head><body>${body}</body></html>`;
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    /* Ensure smooth scrolling works correctly */
+    html { scroll-behavior: smooth; font-family: 'Inter', system-ui, sans-serif; }
+  </style>
+</head>
+<body>
+  ${body}
+  <script>
+    // Initialize icons
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+  </script>
+</body>
+</html>`;
 }
 
 export default function PreviewPanel({ blocks }: PreviewPanelProps) {

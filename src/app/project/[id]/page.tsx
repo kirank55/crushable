@@ -31,8 +31,16 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
           isFullScreen={isChatFullScreen}
           messages={state.savedMessages}
           onMessagesChange={state.setSavedMessages}
+          blocks={state.blocks}
+          onAddBlockSmart={state.addBlockSmart}
+          onReplaceAllBlocks={state.replaceAllBlocks}
+          onVersionCreated={state.createVersionSnapshot}
         />
-        {!isChatFullScreen && <PreviewPanel blocks={state.blocks} />}
+        {!isChatFullScreen && (
+          <div className="preview-with-sections">
+            <PreviewPanel blocks={state.blocks} />
+          </div>
+        )}
       </div>
 
       <VersionsPanel

@@ -258,6 +258,24 @@ export function usePageState(projectId?: string) {
     setIsDirty(true);
   }, [pushUndo]);
 
+  const replaceAllBlocks = useCallback((newBlocks: Block[]) => {
+    logger.action('replaceAllBlocks', { count: newBlocks.length });
+    isViewingOldVersion.current = false;
+    setBlocks((prev) => {
+      pushUndo([...prev]);
+      return newBlocks;
+    });
+    latestBlocksRef.current = newBlocks;
+    setCurrentVersionIndex(null);
+    setIsDirty(true);
+  }, [pushUndo]);
+
+  const toggleBlockVisibility = useCallback((id: string, visible: boolean) => {
+    logger.action('toggleBlockVisibility', { blockId: id, visible });
+    setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, visible } : b)));
+    setIsDirty(true);
+  }, []);
+
   const removeBlock = useCallback((id: string) => {
     logger.action('removeBlock', { blockId: id });
     isViewingOldVersion.current = false;
@@ -435,6 +453,8 @@ export function usePageState(projectId?: string) {
     insertBlockAfter,
     duplicateBlock,
     removeBlock,
+    replaceAllBlocks,
+    toggleBlockVisibility,
     selectBlock,
     reorderBlocks,
     createVersionSnapshot,

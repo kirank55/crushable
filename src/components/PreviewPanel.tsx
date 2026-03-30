@@ -1,10 +1,7 @@
 'use client';
 
 import { Block } from '@/types';
-
-interface PreviewPanelProps {
-  blocks: Block[];
-}
+import { usePageStateContext } from '@/context/PageStateContext';
 
 const EMPTY_STATE_HTML = `<!DOCTYPE html>
 <html lang="en">
@@ -65,7 +62,8 @@ function buildPreviewHtml(blocks: Block[]): string {
 </html>`;
 }
 
-export default function PreviewPanel({ blocks }: PreviewPanelProps) {
+export default function PreviewPanel() {
+  const { blocks } = usePageStateContext();
   const srcDoc = buildPreviewHtml(blocks);
 
   return (

@@ -1,7 +1,8 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use, useState, useCallback } from 'react';
 import { usePageState } from '@/hooks/usePageState';
+import { PageStateProvider, PageStateContextValue } from '@/context/PageStateContext';
 import Toolbar from '@/components/Toolbar';
 import ChatPanel from '@/components/ChatPanel';
 import PreviewPanel from '@/components/PreviewPanel';
@@ -11,46 +12,53 @@ export const runtime = 'edge';
 
 export default function BuilderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const state = usePageState(id);
   const [versionsOpen, setVersionsOpen] = useState(false);
 
-  const state = usePageState(id);
+  const toggleVersions = useCallback(() => setVersionsOpen((prev) => !prev), []);
+  const closeVersions = useCallback(() => setVersionsOpen(false), []);
+
   const isChatFullScreen = state.blocks.length === 0;
 
+  // All callbacks from usePageState are already useCallback-wrapped,
+  // so no useMemo needed — the object reference changes only when state changes.
+  // contextValue is a new object based on id parameter, so can't move it outside the component.
+  const contextValue: PageStateContextValue = {
+    versionsOpen,
+    toggleVersions,
+    closeVersions,
+    blocks: state.blocks,
+    savedMessages: state.savedMessages,
+    versions: state.versions,
+    isDirty: state.isDirty,
+    projectName: state.projectName,
+    currentVersionIndex: state.currentVersionIndex,
+    addBlockSmart: state.addBlockSmart,
+    replaceAllBlocks: state.replaceAllBlocks,
+    setSavedMessages: state.setSavedMessages,
+    createVersionSnapshot: state.createVersionSnapshot,
+    loadVersion: state.loadVersion,
+    restoreCurrentBlocks: state.restoreCurrentBlocks,
+    handleSave: state.handleSave,
+    handleRename: state.handleRename,
+  };
+
   return (
-    <div className="builder-layout">
-      <Toolbar
-        projectName={state.projectName}
-        isDirty={state.isDirty}
-        onSave={state.handleSave}
-        onRename={state.handleRename}
-        onVersionsOpen={() => setVersionsOpen(!versionsOpen)}
-      />
+    <PageStateProvider value={contextValue}>
+      <div className="builder-layout">
+        <Toolbar />
 
-      <div className="builder-main">
-        <ChatPanel
-          isFullScreen={isChatFullScreen}
-          messages={state.savedMessages}
-          onMessagesChange={state.setSavedMessages}
-          blocks={state.blocks}
-          onAddBlockSmart={state.addBlockSmart}
-          onReplaceAllBlocks={state.replaceAllBlocks}
-          onVersionCreated={state.createVersionSnapshot}
-        />
-        {!isChatFullScreen && (
-          <div className="preview-with-sections">
-            <PreviewPanel blocks={state.blocks} />
-          </div>
-        )}
+        <div className="builder-main">
+          <ChatPanel isFullScreen={isChatFullScreen} />
+          {!isChatFullScreen && (
+            <div className="preview-with-sections">
+              <PreviewPanel />
+            </div>
+          )}
+        </div>
+
+        <VersionsPanel />
       </div>
-
-      <VersionsPanel
-        isOpen={versionsOpen}
-        onClose={() => setVersionsOpen(false)}
-        versions={state.versions}
-        currentVersionIndex={state.currentVersionIndex}
-        onLoadVersion={state.loadVersion}
-        onRestoreCurrent={state.restoreCurrentBlocks}
-      />
-    </div>
+    </PageStateProvider>
   );
 }

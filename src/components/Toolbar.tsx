@@ -1,6 +1,4 @@
-'use client';
-
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   ArrowLeft,
   Save,
@@ -13,26 +11,19 @@ import {
   Check,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { usePageStateContext } from '@/context/PageStateContext';
 
-interface ToolbarProps {
-  projectName: string;
-  isDirty: boolean;
-  onSave: () => void;
-  onRename: (name: string) => void;
-  onVersionsOpen: () => void;
-}
-
-export default function Toolbar({ projectName, isDirty, onSave, onRename, onVersionsOpen }: ToolbarProps) {
+export default function Toolbar() {
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
-  const [editName, setEditName] = useState(projectName);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleRename = () => {
+  const { projectName, isDirty, handleSave, handleRename, toggleVersions } =
+    usePageStateContext();
+
+  const finishEditingProjectName = () => {
     setIsEditing(false);
-    const trimmed = editName.trim();
-    if (trimmed && trimmed !== projectName) {
-      onRename(trimmed);
-    }
+    if (inputRef.current) handleRename(inputRef.current.value);
   };
 
   return (
@@ -47,19 +38,16 @@ export default function Toolbar({ projectName, isDirty, onSave, onRename, onVers
         <div className="project-identity">
           {isEditing ? (
             <input
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              onBlur={handleRename}
-              onKeyDown={(e) => e.key === 'Enter' && handleRename()}
+              ref={inputRef}
+              defaultValue={projectName}
+              onBlur={finishEditingProjectName}
+              onKeyDown={(e) => e.key === 'Enter' && finishEditingProjectName()}
               className="project-name-input"
               autoFocus
             />
           ) : (
             <button
-              onClick={() => {
-                setEditName(projectName);
-                setIsEditing(true);
-              }}
+              onClick={() => setIsEditing(true)}
               className="project-name-btn"
             >
               {projectName}
@@ -78,7 +66,7 @@ export default function Toolbar({ projectName, isDirty, onSave, onRename, onVers
         </div>
 
         <div className="toolbar-actions toolbar-actions-inline">
-          <button className="header-action-btn" title="Versions" onClick={onVersionsOpen}>
+          <button className="header-action-btn" title="Versions" onClick={toggleVersions}>
             <History size={16} />
           </button>
           <button className="header-action-btn" title="Hide Chat">
@@ -113,7 +101,7 @@ export default function Toolbar({ projectName, isDirty, onSave, onRename, onVers
           <button
             className="toolbar-btn save-btn"
             title="Save"
-            onClick={onSave}
+            onClick={handleSave}
             disabled={!isDirty}
           >
             <Save size={18} />

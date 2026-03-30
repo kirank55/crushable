@@ -413,10 +413,12 @@ export function usePageState(projectId?: string) {
   }, []);
 
   const handleRename = useCallback((name: string) => {
-    logger.action('handleRename', { name });
-    setProjectName(name);
+    const trimmed = name.trim();
+    if (!trimmed || trimmed === projectName) return;
+    logger.action('handleRename', { name: trimmed });
+    setProjectName(trimmed);
     setIsDirty(true);
-  }, []);
+  }, [projectName]);
 
   const persistMessages = useCallback((messages: Message[]) => {
     setSavedMessages(messages);

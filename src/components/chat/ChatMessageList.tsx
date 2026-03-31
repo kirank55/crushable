@@ -1,24 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { Sparkles } from 'lucide-react';
-import { Message } from '@/types';
-import { formatRelativeDate } from '@/lib/date';
 import { useChatContext } from '@/context/ChatContext';
+import UserMessage from './UserMessage';
+import AssistantMessage from './AssistantMessage';
 import GenerationProgress from './GenerationProgress';
 
 // ─── Sub-components ─────────────────────────────────────────────
-
-function ChatMessage({ message }: { message: Message }) {
-  return (
-    <div className={`chat-message ${message.role}`}>
-      <div className="message-content">
-        <div className="chat-message-content">{message.content}</div>
-        {message.timestamp && (
-          <div className="message-time">{formatRelativeDate(message.timestamp)}</div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function EmptyState() {
   return (
@@ -49,9 +36,13 @@ export default function ChatMessageList() {
         <EmptyState />
       ) : (
         <>
-          {messages.map((msg) => (
-            <ChatMessage key={msg.id} message={msg} />
-          ))}
+          {messages.map((msg) =>
+            msg.role === 'user' ? (
+              <UserMessage key={msg.id} message={msg} />
+            ) : (
+              <AssistantMessage key={msg.id} message={msg} />
+            ),
+          )}
           <GenerationProgress />
         </>
       )}

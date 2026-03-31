@@ -50,6 +50,7 @@ export interface GenerateRequestBody {
     existingSectionsSummary?: string;
     blocksSummary?: string;
     selectedBlockId?: string;
+    hasBlocks?: boolean;
 }
 
 /** All modes the LLM classifier is allowed to return. */
@@ -72,7 +73,18 @@ type KnownMode = typeof KNOWN_MODES[number];
  * Returns a `KnownMode` string; falls back to `'new'` if the LLM returns
  * something unrecognised.
  */
-async function inferModeFromLLM(userPrompt: string, apiKey: string): Promise<KnownMode> {
+async function inferModeFromLLM(
+    userPrompt: string,
+    apiKey: string,
+    context?: { hasBlocks?: boolean },
+): Promise<KnownMode> {
+    const hasBlocksHint = context?.hasBlocks
+        ? '\n\nCONTEXT: The user already has sections/blocks on their page. ' +
+          'Prefer "add-section" for new content or "edit" for modifying existing content. ' +
+          'Do NOT return "plan" or "new" unless the user explicitly asks for a completely new page.'
+        : '\n\nCONTEXT: The user has NO sections/blocks yet. ' +
+          'Prefer "plan" if they want a full page, or "new" for a single section.';
+
     const systemPrompt =
         'You are a routing classifier for a landing-page builder. ' +
         'Given a user request, respond with EXACTLY ONE of the following mode identifiers and nothing else:\n' +
@@ -87,9 +99,13 @@ async function inferModeFromLLM(userPrompt: string, apiKey: string): Promise<Kno
         '- "validate"          → review HTML for structural / UX issues\n' +
         '- "global-style-edit" → apply a style change across all blocks\n' +
         '- "modification-intent" → resolve ambiguous modification intent\n' +
-        'Return only the mode identifier, no punctuation, no explanation.';
+        'Return only the mode identifier, no punctuation, no explanation.' +
+        hasBlocksHint;
 
-    logger.info('inferModeFromLLM: calling LLM for mode inference', { promptLength: userPrompt.length });
+    logger.info('inferModeFromLLM: calling LLM for mode inference', {
+        promptLength: userPrompt.length,
+        hasBlocks: context?.hasBlocks,
+    });
 
     const raw = await textFromOpenRouter({ prompt: userPrompt, systemPrompt, apiKey });
     const inferred = raw.trim().toLowerCase() as KnownMode;
@@ -99,8 +115,8 @@ async function inferModeFromLLM(userPrompt: string, apiKey: string): Promise<Kno
         return inferred;
     }
 
-    logger.error('inferModeFromLLM', `LLM returned unrecognised mode "${inferred}" — falling back to "new"`);
-    return 'new';
+    logger.error('inferModeFromLLM', `LLM returned unrecognised mode "${inferred}" — falling back to "add-section"`);
+    return context?.hasBlocks ? 'add-section' : 'new';
 }
 
 /**
@@ -160,7 +176,7 @@ export async function analyzeRequest(body: GenerateRequestBody, apiKey?: string)
 
     if (!mode) {
         if (apiKey && prompt) {
-            resolvedMode = await inferModeFromLLM(prompt, apiKey);
+            resolvedMode = await inferModeFromLLM(prompt, apiKey, { hasBlocks: body.hasBlocks });
             logger.info(`analyzeRequest: mode inferred by LLM as "${resolvedMode}"`);
         } else {
             resolvedMode = 'new';

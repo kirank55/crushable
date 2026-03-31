@@ -7,15 +7,6 @@ import { useAutoStartGeneration } from '@/hooks/useAutoStartGeneration';
 import type { GenerationPhase, SectionProgress } from '@/hooks/useChatGeneration';
 import type { Message } from '@/types';
 
-// ─── Intent detection ───────────────────────────────────────────
-
-const FULL_PAGE_INTENT_RE =
-  /\b(landing\s*page|full\s*page|complete\s*page|entire\s*page|whole\s*page|build\b.*\bpage|create\b.*\bsite|make\b.*\bwebsite)\b/i;
-
-function isFullPageIntent(prompt: string): boolean {
-  return FULL_PAGE_INTENT_RE.test(prompt);
-}
-
 // ─── Context shape ──────────────────────────────────────────────
 
 export interface ChatContextValue {
@@ -53,7 +44,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     sectionProgress,
     statusText,
     generateFullPage,
-    generateSingleSection,
+    generate,
     handleStop,
   } = useChatGeneration();
 
@@ -72,12 +63,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
     setInput('');
 
-    if (blocks.length === 0 || isFullPageIntent(trimmed)) {
+    if (blocks.length === 0) {
+      // First call — always generate a full page
       generateFullPage(trimmed);
     } else {
-      generateSingleSection(trimmed);
+      // Subsequent calls — backend decides mode via inferModeFromLLM
+      generate(trimmed);
     }
-  }, [input, isLoading, blocks.length, generateFullPage, generateSingleSection]);
+  }, [input, isLoading, blocks.length, generateFullPage, generate]);
 
   const value: ChatContextValue = {
     messages,

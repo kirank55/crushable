@@ -22,6 +22,7 @@ export interface PageStateContextValue {
   // Actions — blocks
   addBlockSmart: (block: Block) => void;
   replaceAllBlocks: (blocks: Block[]) => void;
+  updateBlock: (id: string, html: string) => void;
 
   // Actions — messages
   setSavedMessages: (messages: Message[]) => void;

@@ -120,7 +120,7 @@ function createSemaphore(maxConcurrency: number): Semaphore {
 async function fetchGeneration(
   payload: Record<string, unknown>,
   signal?: AbortSignal,
-): Promise<string> {
+): Promise<{ text: string; resolvedMode?: string }> {
   const mode = payload.mode ?? 'unknown';
   const startTime = Date.now();
   logger.info(`fetchGeneration: POST /api/generate (mode: ${mode})`);
@@ -141,6 +141,16 @@ async function fetchGeneration(
     throw new Error(body?.error ?? `Generation failed (${res.status})`);
   }
 
+  // Check if the response is JSON (plan mode, etc.) or streamed text
+  const contentType = res.headers.get('Content-Type') || '';
+  const resolvedMode = res.headers.get('X-Resolved-Mode') || undefined;
+
+  if (contentType.includes('application/json')) {
+    const json = await res.json();
+    logger.info(`fetchGeneration: JSON response (mode: ${json.mode}) after ${Date.now() - startTime}ms`);
+    return { text: JSON.stringify(json), resolvedMode: json.mode };
+  }
+
   const reader = res.body?.getReader();
   if (!reader) throw new Error('No response stream');
 
@@ -156,7 +166,7 @@ async function fetchGeneration(
   }
 
   logger.info(`fetchGeneration: done (mode: ${mode}) in ${Date.now() - startTime}ms`);
-  return text;
+  return { text, resolvedMode };
 }
 
 // ─── Hook ────────────────────────────────────────────────────────
@@ -164,11 +174,13 @@ async function fetchGeneration(
 export function useChatGeneration() {
   // Pull dependencies from context — no more prop drilling
   const {
+    blocks,
     savedMessages: messages,
     setSavedMessages: onMessagesChange,
     replaceAllBlocks: onReplaceAllBlocks,
     createVersionSnapshot: onVersionCreated,
     addBlockSmart: onAddBlockSmart,
+    updateBlock: onUpdateBlock,
   } = usePageStateContext();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -180,6 +192,10 @@ export function useChatGeneration() {
   // Keep a ref to the latest messages so callbacks never have a stale closure.
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
+
+  // Keep a ref to current blocks for generate()
+  const blocksRef = useRef(blocks);
+  blocksRef.current = blocks;
 
   // ── Progress helpers ──────────────────────────────────────────
 
@@ -231,7 +247,7 @@ export function useChatGeneration() {
       try {
         // 3. Request section plan
         logger.info('generateFullPage: requesting section plan');
-        const planRaw = await fetchGeneration({ prompt: userPrompt, mode: 'plan' }, signal);
+        const { text: planRaw } = await fetchGeneration({ prompt: userPrompt, mode: 'plan' }, signal);
         const sections = parsePlanResponse(planRaw);
         logger.info('generateFullPage: plan received', { count: sections.length, sections });
 
@@ -262,7 +278,7 @@ export function useChatGeneration() {
                   `Page section map:\n${sectionMap}`,
                 ].join('\n\n');
 
-                const raw = await fetchGeneration({ prompt: sectionPrompt, mode: 'new' }, signal);
+                const { text: raw } = await fetchGeneration({ prompt: sectionPrompt, mode: 'new' }, signal);
                 const { html } = parseResponse(raw);
                 const finalHtml = setRootSectionIdentifiers(html, blueprint.sectionId);
 
@@ -310,9 +326,9 @@ export function useChatGeneration() {
     [onMessagesChange, onReplaceAllBlocks, onVersionCreated, updateSectionStatus, resetState],
   );
 
-  // ── Single section generation ─────────────────────────────────
+  // ── Unified generate — backend decides mode via inferModeFromLLM ──
 
-  const generateSingleSection = useCallback(
+  const generate = useCallback(
     async (userPrompt: string) => {
       abortRef.current = new AbortController();
       const { signal } = abortRef.current;
@@ -322,18 +338,48 @@ export function useChatGeneration() {
 
       setIsLoading(true);
       setPhase('building');
-      setStatusText('Generating section…');
+      setStatusText('Generating…');
 
       try {
-        const raw = await fetchGeneration({ prompt: userPrompt, mode: 'new' }, signal);
-        const { summary, html } = parseResponse(raw);
-        const block = createBlock(html);
+        // Send prompt without mode — backend will infer via inferModeFromLLM
+        // Include hasBlocks so the classifier has context
+        const { text: raw, resolvedMode } = await fetchGeneration(
+          { prompt: userPrompt, hasBlocks: blocksRef.current.length > 0 },
+          signal,
+        );
 
-        onAddBlockSmart(block);
+        logger.info('generate: backend resolved mode', { resolvedMode });
 
-        const content = summary || `Created: ${block.label}`;
-        currentMessages = [...currentMessages, createAssistantMessage(content)];
-        onMessagesChange(currentMessages);
+        // Handle response based on the mode the backend resolved
+        if (resolvedMode === 'plan') {
+          // Backend returned a plan JSON — this shouldn't normally happen when
+          // blocks exist, but handle it gracefully by treating it like add-section
+          const planData = JSON.parse(raw);
+          const sections = planData.sections || parsePlanResponse(raw);
+          const content = `Plan: ${sections.join(', ')}`;
+          currentMessages = [...currentMessages, createAssistantMessage(content)];
+          onMessagesChange(currentMessages);
+        } else {
+          // Streaming HTML response (new, edit, add-section, global-style-edit, etc.)
+          const { summary, html } = parseResponse(raw);
+
+          if (resolvedMode === 'edit') {
+            // For edit mode, find the target block and update it
+            // The backend should have processed the prompt to identify the block
+            // For now, create a new block — edit targeting will refine later
+            const block = createBlock(html);
+            onAddBlockSmart(block);
+          } else {
+            // add-section, new, or default — add the block
+            const block = createBlock(html);
+            onAddBlockSmart(block);
+          }
+
+          const content = summary || 'Section generated.';
+          currentMessages = [...currentMessages, createAssistantMessage(content)];
+          onMessagesChange(currentMessages);
+        }
+
         setPhase('done');
       } catch (err) {
         if ((err as Error)?.name === 'AbortError') {
@@ -342,7 +388,7 @@ export function useChatGeneration() {
         }
 
         const errorText = err instanceof Error ? err.message : 'Unknown error';
-        logger.error('generateSingleSection: failed', err);
+        logger.error('generate: failed', err);
         onMessagesChange([...currentMessages, createAssistantMessage(`Error: ${errorText}`)]);
         setPhase('error');
       } finally {
@@ -351,7 +397,7 @@ export function useChatGeneration() {
         abortRef.current = null;
       }
     },
-    [onMessagesChange, onAddBlockSmart, resetState],
+    [onMessagesChange, onAddBlockSmart, onUpdateBlock, resetState],
   );
 
   return {
@@ -360,7 +406,7 @@ export function useChatGeneration() {
     sectionProgress,
     statusText,
     generateFullPage,
-    generateSingleSection,
+    generate,
     handleStop,
   } as const;
 }

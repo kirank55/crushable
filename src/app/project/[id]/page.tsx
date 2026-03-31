@@ -35,6 +35,7 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
     currentVersionIndex: state.currentVersionIndex,
     addBlockSmart: state.addBlockSmart,
     replaceAllBlocks: state.replaceAllBlocks,
+    updateBlock: state.updateBlock,
     setSavedMessages: state.setSavedMessages,
     createVersionSnapshot: state.createVersionSnapshot,
     loadVersion: state.loadVersion,

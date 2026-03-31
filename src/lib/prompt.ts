@@ -222,7 +222,14 @@ You are planning sections for a landing page. Return ONLY a JSON array of sectio
 Example output:
 ["Navigation bar with logo and links", "Hero section with headline and CTA", "Features grid with 3 cards", "Testimonials section", "Pricing table with 3 tiers", "Footer with links and social media"]
 
-Return ONLY the JSON array, nothing else. No markdown, no code blocks, just the raw JSON array. Choose 4-6 sections that make sense for the request.`;
+Rules:
+- The FIRST item MUST always be a Navigation/Navbar section.
+- The LAST item MUST always be a Footer section.
+- Choose 4-8 total sections (including nav and footer) that make sense for the request.
+- Only include sections that genuinely serve the described product/page — do NOT generate random filler sections.
+- Common relevant sections: Hero, Features, Pricing, Testimonials, FAQ, CTA, How It Works, About, Contact.
+
+Return ONLY the JSON array, nothing else. No markdown, no code blocks, just the raw JSON array.`;
 }
 
 export function buildDetailedPlanPrompt(
@@ -344,11 +351,20 @@ export function parseResponse(response: string): { summary: string; html: string
     );
 }
 
+/** Keywords that identify a section as a navbar/navigation. */
+const NAV_PATTERN = /\b(nav|navbar|navigation|header|menu)\b/i;
+
+/** Keywords that identify a section as a footer. */
+const FOOTER_PATTERN = /\b(footer)\b/i;
+
 /**
  * Parse a plan response (JSON array of section descriptions).
  *
  * Throws if no JSON array is found or the JSON is malformed — the LLM did not
  * follow the output format and the caller must handle the error.
+ *
+ * Post-processing guard: ensures the plan always starts with a nav-like
+ * section and ends with a footer. If the LLM forgot either, they are inserted.
  */
 export function parsePlanResponse(response: string): string[] {
     const match = response.match(/\[[\s\S]*\]/);
@@ -360,5 +376,19 @@ export function parsePlanResponse(response: string): string[] {
         );
     }
 
-    return JSON.parse(match[0]) as string[];
+    const sections: string[] = JSON.parse(match[0]);
+
+    // Ensure first section is navigation
+    const hasNav = sections.length > 0 && NAV_PATTERN.test(sections[0]);
+    if (!hasNav) {
+        sections.unshift('Navigation bar with logo and links');
+    }
+
+    // Ensure last section is footer
+    const hasFooter = sections.length > 0 && FOOTER_PATTERN.test(sections[sections.length - 1]);
+    if (!hasFooter) {
+        sections.push('Footer with links and social media');
+    }
+
+    return sections;
 }

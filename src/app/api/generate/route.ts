@@ -4,6 +4,8 @@ import { analyzeRequest, RequestValidationError } from '@/lib/prompt-analysis';
 import { createGenerationStream } from '@/lib/stream-generation';
 import { logger } from '@/lib/logger';
 
+export const runtime = 'edge';
+
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();

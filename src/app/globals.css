@@ -2011,6 +2011,17 @@ h3,
   gap: 4px;
 }
 
+.code-toolbar-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.code-toolbar-count {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 .code-lang-badge {
   font-size: 11px;
   font-weight: 600;

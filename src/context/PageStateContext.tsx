@@ -3,7 +3,7 @@
 import { createContext, useContext } from 'react';
 import { Block, Message, Version } from '@/types';
 
-// ─── Context shape ──────────────────────────────────────────────
+export type ViewMode = 'preview' | 'code' | 'console';
 
 export interface PageStateContextValue {
   // State
@@ -18,6 +18,10 @@ export interface PageStateContextValue {
   versionsOpen: boolean;
   toggleVersions: () => void;
   closeVersions: () => void;
+  viewMode: ViewMode;
+  setViewMode: (mode: ViewMode) => void;
+  mobilePreview: boolean;
+  setMobilePreview: (mobile: boolean) => void;
 
   // Actions — blocks
   addBlockSmart: (block: Block) => void;

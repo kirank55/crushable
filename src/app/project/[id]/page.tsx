@@ -2,7 +2,7 @@
 
 import { use, useState, useCallback } from 'react';
 import { usePageState } from '@/hooks/usePageState';
-import { PageStateProvider, PageStateContextValue } from '@/context/PageStateContext';
+import { PageStateProvider, PageStateContextValue, ViewMode } from '@/context/PageStateContext';
 import Toolbar from '@/components/Toolbar';
 import ChatPanel from '@/components/ChatPanel';
 import PreviewPanel from '@/components/PreviewPanel';
@@ -14,6 +14,8 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
   const { id } = use(params);
   const state = usePageState(id);
   const [versionsOpen, setVersionsOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('preview');
+  const [mobilePreview, setMobilePreview] = useState(false);
 
   const toggleVersions = useCallback(() => setVersionsOpen((prev) => !prev), []);
   const closeVersions = useCallback(() => setVersionsOpen(false), []);
@@ -27,6 +29,10 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
     versionsOpen,
     toggleVersions,
     closeVersions,
+    viewMode,
+    setViewMode,
+    mobilePreview,
+    setMobilePreview,
     blocks: state.blocks,
     savedMessages: state.savedMessages,
     versions: state.versions,

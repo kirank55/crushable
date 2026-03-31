@@ -54,8 +54,17 @@ function buildSectionMap(sections: string[]): string {
   return sections.map((s, i) => `${i + 1}. ${s}`).join('\n');
 }
 
-function createAssistantMessage(content: string): Message {
-  return { id: uuidv4(), role: 'assistant', content, timestamp: Date.now() };
+function createAssistantMessage(
+  content: string,
+  extra?: { plan?: string[]; sectionProgress?: Message['sectionProgress'] },
+): Message {
+  return {
+    id: uuidv4(),
+    role: 'assistant',
+    content,
+    timestamp: Date.now(),
+    ...extra,
+  };
 }
 
 function createUserMessage(content: string): Message {
@@ -303,10 +312,28 @@ export function useChatGeneration() {
         onReplaceAllBlocks(validBlocks);
         onVersionCreated(userPrompt);
 
+        // Capture final progress state for the persisted message
+        const finalProgress = blueprints.map((b) => {
+          const found = generatedBlocks[blueprints.indexOf(b)];
+          return {
+            id: b.sectionId,
+            label: b.title,
+            status: (found ? 'done' : 'error') as 'done' | 'error',
+          };
+        });
+
         const summary = `✓ Built ${validBlocks.length} section${validBlocks.length !== 1 ? 's' : ''} for your page. You can ask me to refine any section or add new ones.`;
-        onMessagesChange([...currentMessages, createAssistantMessage(summary)]);
+        onMessagesChange([
+          ...currentMessages,
+          createAssistantMessage(summary, {
+            plan: sections,
+            sectionProgress: finalProgress,
+          }),
+        ]);
         setPhase('done');
         setStatusText('');
+        // Clear ephemeral progress — data is now persisted in the message
+        setSectionProgress([]);
       } catch (err) {
         if ((err as Error)?.name === 'AbortError') {
           resetState();

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, ArrowRight, Layers3, Sparkles, MessageSquareText, Code2, Clock, Trash2 } from 'lucide-react';
+import { Plus, ArrowRight, Layers3, Clock, Trash2 } from 'lucide-react';
 import { getProjects, saveProject, deleteProject } from '@/lib/storage';
 import { formatRelativeDate } from '@/lib/date';
 import { Project } from '@/types';
@@ -108,58 +108,6 @@ export default function HomePage() {
               <span>Create Project</span>
               <ArrowRight size={18} />
             </button>
-          </div>
-
-          <div className="project-hero-visual" aria-hidden="true">
-            <div className="hero-visual-frame">
-              <div className="hero-visual-topbar">
-                <span />
-                <span />
-                <span />
-              </div>
-
-              <div className="hero-visual-canvas">
-                <div className="hero-visual-sidebar">
-                  <span className="hero-visual-pill wide" />
-                  <span className="hero-visual-pill" />
-                  <span className="hero-visual-pill" />
-                </div>
-
-                <div className="hero-visual-page">
-                  <div className="hero-visual-page-header">
-                    <div className="hero-visual-badge">
-                      <Sparkles size={14} />
-                      <span>AI build flow</span>
-                    </div>
-                    <span className="hero-visual-title" />
-                    <span className="hero-visual-copy" />
-                    <span className="hero-visual-copy short" />
-                  </div>
-
-                  <div className="hero-visual-grid">
-                    <div className="hero-visual-card tall">
-                      <div className="hero-visual-card-icon">
-                        <MessageSquareText size={18} />
-                      </div>
-                      <strong>Describe your project</strong>
-                      <span>Turn a rough brief into a structured plan.</span>
-                    </div>
-                    <div className="hero-visual-card">
-                      <div className="hero-visual-card-icon">
-                        <Layers3 size={18} />
-                      </div>
-                      <strong>Generate sections</strong>
-                    </div>
-                    <div className="hero-visual-card wide">
-                      <div className="hero-visual-card-icon">
-                        <Code2 size={18} />
-                      </div>
-                      <strong>Refine and export HTML</strong>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
 

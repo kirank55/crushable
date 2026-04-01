@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, RefreshCw } from 'lucide-react';
 import { useChatContext } from '@/context/ChatContext';
 import UserMessage from './UserMessage';
 import AssistantMessage from './AssistantMessage';
@@ -17,10 +17,26 @@ function EmptyState() {
   );
 }
 
+// ─── Resume Banner ──────────────────────────────────────────────
+
+function ResumeBanner({ onResume }: { onResume: () => void }) {
+  return (
+    <div className="resume-banner">
+      <div className="resume-banner-text">
+        <RefreshCw size={14} className="resume-banner-icon" />
+        <span>Generation was interrupted. Resume from where you left off?</span>
+      </div>
+      <button className="resume-banner-btn" onClick={onResume}>
+        Resume
+      </button>
+    </div>
+  );
+}
+
 // ─── Component ──────────────────────────────────────────────────
 
 export default function ChatMessageList() {
-  const { messages, isLoading, sectionProgress } = useChatContext();
+  const { messages, isLoading, sectionProgress, hasBlocks, handleResume } = useChatContext();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when content changes
@@ -30,8 +46,19 @@ export default function ChatMessageList() {
 
   const hasMessages = messages.length > 0 || isLoading;
 
+  // Show resume banner when generation was interrupted:
+  // messages exist but no blocks were produced and we're not currently generating
+  const firstUserMessage = messages.find((m) => m.role === 'user');
+  const showResumeBanner =
+    !hasBlocks &&
+    !isLoading &&
+    messages.length > 1 &&
+    !!firstUserMessage &&
+    !!handleResume;
+
   return (
     <div className="chat-messages">
+      {showResumeBanner && <ResumeBanner onResume={handleResume!} />}
       {!hasMessages ? (
         <EmptyState />
       ) : (

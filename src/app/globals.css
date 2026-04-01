@@ -2984,10 +2984,9 @@ h3,
 
 .project-hero {
   width: 100%;
-  display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+  display: flex;
+  flex-direction: column;
   gap: 24px;
-  align-items: stretch;
 }
 
 .project-hero-copy {
@@ -2999,6 +2998,8 @@ h3,
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  max-width: 780px;
+  width: 100%;
 }
 
 .project-hero-copy h2 {
@@ -3498,6 +3499,57 @@ h3,
 }
 
 /* ========================================
+   Resume Banner (interrupted generation)
+   ======================================== */
+
+.resume-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 10px 12px 2px;
+  padding: 11px 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  animation: fadeIn 0.25s ease;
+}
+
+.resume-banner-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.resume-banner-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.resume-banner-btn {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+
+.resume-banner-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+/* ========================================
    Full-Screen Chat Panel
    ======================================== */
 
@@ -3839,24 +3891,9 @@ h3,
     padding: 24px 16px 28px;
   }
 
-  .project-hero {
-    grid-template-columns: 1fr;
-  }
 
   .project-hero-copy h2 {
     font-size: 32px;
-  }
-
-  .hero-visual-frame {
-    min-height: 300px;
-  }
-
-  .hero-visual-canvas {
-    grid-template-columns: 1fr;
-  }
-
-  .hero-visual-sidebar {
-    display: none;
   }
 
   .chat-panel {

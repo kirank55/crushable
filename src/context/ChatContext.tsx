@@ -19,6 +19,7 @@ export interface ChatContextValue {
   statusText: string;
   handleSend: () => void;
   handleStop: () => void;
+  handleResume: (() => void) | null;
   hasBlocks: boolean;
 }
 
@@ -72,6 +73,18 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     }
   }, [input, isLoading, blocks.length, generateFullPage, generate]);
 
+  // Resume interrupted generation: re-run full page generation from the
+  // original user brief (first user message in history).
+  const handleResume = useCallback(() => {
+    if (isLoading || blocks.length > 0) return;
+    const firstUserMsg = messages.find((m) => m.role === 'user');
+    if (!firstUserMsg) return;
+    generateFullPage(firstUserMsg.content, true);
+  }, [isLoading, blocks.length, messages, generateFullPage]);
+
+  // Expose resume only when applicable (interrupted generation)
+  const isInterrupted = !isLoading && blocks.length === 0 && messages.length > 1;
+
   const value: ChatContextValue = {
     messages,
     input,
@@ -82,6 +95,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     statusText,
     handleSend,
     handleStop,
+    handleResume: isInterrupted ? handleResume : null,
     hasBlocks: blocks.length > 0,
   };
 

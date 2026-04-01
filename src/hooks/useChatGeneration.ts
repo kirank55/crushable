@@ -5,6 +5,8 @@ import { getApiKey, getModel } from '@/lib/storage';
 import { createBlock, buildBlockLabel, setRootSectionIdentifiers } from '@/lib/blocks';
 import { parsePlanResponse, parseResponse } from '@/lib/prompt';
 import { logger } from '@/lib/logger';
+import { generateFullHTML } from '@/lib/export';
+import { validateGeneratedHtml, autoFixIssues } from '@/lib/validate';
 import { usePageStateContext } from '@/context/PageStateContext';
 
 // ─── Public types ────────────────────────────────────────────────
@@ -309,7 +311,27 @@ export function useChatGeneration() {
         const validBlocks = generatedBlocks.filter((b): b is Block => b !== null);
         logger.info('generateFullPage: complete', { count: validBlocks.length });
 
-        onReplaceAllBlocks(validBlocks);
+        // 7. Run validation + auto-fix silently
+        let committedBlocks = validBlocks;
+        let validationNote = '';
+        try {
+          const fullHtml = generateFullHTML(validBlocks);
+          const issues = validateGeneratedHtml(fullHtml);
+          logger.info('generateFullPage: validation', { issueCount: issues.length });
+
+          if (issues.length > 0) {
+            const { blocks: fixedBlocks, applied } = autoFixIssues(validBlocks, issues);
+            if (applied.length > 0) {
+              committedBlocks = fixedBlocks;
+              validationNote = ` Auto-fixed ${applied.length} issue${applied.length !== 1 ? 's' : ''}: ${applied.slice(0, 3).join(' ')}`;
+              logger.info('generateFullPage: auto-fixed', { applied });
+            }
+          }
+        } catch (valErr) {
+          logger.error('generateFullPage: validation failed (non-fatal)', valErr);
+        }
+
+        onReplaceAllBlocks(committedBlocks);
         onVersionCreated(userPrompt);
 
         // Capture final progress state for the persisted message
@@ -322,7 +344,7 @@ export function useChatGeneration() {
           };
         });
 
-        const summary = `✓ Built ${validBlocks.length} section${validBlocks.length !== 1 ? 's' : ''} for your page. You can ask me to refine any section or add new ones.`;
+        const summary = `✓ Built ${validBlocks.length} section${validBlocks.length !== 1 ? 's' : ''} for your page.${validationNote} You can ask me to refine any section or add new ones.`;
         onMessagesChange([
           ...currentMessages,
           createAssistantMessage(summary, {

@@ -42,6 +42,18 @@ export interface Settings {
   model: string;
 }
 
+export interface ValidationIssue {
+  type: 'error' | 'warning';
+  code: string;
+  message: string;
+  /** Anchor href that failed to resolve. */
+  href?: string;
+  /** The id value that a broken anchor was targeting. */
+  targetId?: string;
+  /** The data-block-id of the affected block. */
+  blockId?: string;
+}
+
 /** Generation always runs section-by-section. Strategy variants deferred to a later phase. */
 export const GENERATION_STRATEGY = 'section-by-section' as const;
 

@@ -1,4 +1,4 @@
-import { setRootSectionIdentifiers } from '@/lib/blocks';
+﻿import { setRootSectionIdentifiers } from '@/lib/blocks';
 import { Block, ValidationIssue } from '@/types';
 
 // ─── Detection helpers ──────────────────────────────────────────
@@ -14,6 +14,69 @@ function isMissingImageSource(src: string | null): boolean {
   const normalized = src.trim().toLowerCase();
   if (!normalized) return true;
   return /placeholder|example\.com|via\.placeholder|dummyimage|your-image|image-url/.test(normalized);
+}
+
+// Detect images with very low opacity class applied (opacity-0 to opacity-40)
+function hasLowOpacity(element: Element): boolean {
+  const className = element.getAttribute('class') || '';
+  const style = element.getAttribute('style') || '';
+  // Tailwind opacity utilities: opacity-0 through opacity-40
+  const lowOpacityClass = /\bopacity-([0-9]|[1-3][0-9]|40)\b/.test(className);
+  const lowOpacityStyle = (() => {
+    const match = style.match(/opacity\s*:\s*([\d.]+)/);
+    if (!match) return false;
+    return parseFloat(match[1]) < 0.4;
+  })();
+  return lowOpacityClass || lowOpacityStyle;
+}
+
+// Check if a section has a strongly-colored background (not white/gray/transparent)
+function hasDarkOrColoredBackground(section: Element): boolean {
+  const className = section.getAttribute('class') || '';
+  const style = section.getAttribute('style') || '';
+  // Detects Tailwind bg-{color}-{shade} where shade >= 400, gradients, and inline bg with non-white colors
+  return /\bbg-(?!white|gray-[0-2]|slate-[0-2]|zinc-[0-2]|neutral-[0-2]|stone-[0-2]|transparent|black\/0)[a-z]/.test(className)
+    || /from-(?!white|gray-[0-2]|slate-[0-2])/.test(className)
+    || /to-(?!white|gray-[0-2]|slate-[0-2])/.test(className)
+    || /background(?:-color)?\s*:\s*(?!white|#fff|rgba\(255,255,255)/i.test(style);
+}
+
+// Find dark text classes inside an element — only problematic on colored backgrounds
+function findDarkTextElements(section: Element): Element[] {
+  const darkTextPattern = /\btext-(?:gray|slate|zinc|neutral|stone)-(?:[6-9][0-9][0-9]|[6-9]00)\b|\btext-black\b/;
+  return Array.from(section.querySelectorAll('[class]')).filter((el) => {
+    const cls = el.getAttribute('class') || '';
+    return darkTextPattern.test(cls);
+  });
+}
+
+// Detect heading/subtext alignment mismatch: e.g. h2 text-left but sibling p text-center
+function hasAlignmentMismatch(section: Element): boolean {
+  const wrapper = Array.from(section.querySelectorAll('div')).find((div) => {
+    const cls = div.getAttribute('class') || '';
+    return /\btext-(?:center|left|right)\b/.test(cls) && div.querySelector('h2,h3');
+  });
+  if (wrapper) {
+    const wrapperAlign = (wrapper.getAttribute('class') || '').match(/\btext-(center|left|right)\b/)?.[1];
+    const headings = Array.from(wrapper.querySelectorAll('h2,h3'));
+    const paras = Array.from(wrapper.querySelectorAll('p'));
+    for (const h of headings) {
+      const hAlign = (h.getAttribute('class') || '').match(/\btext-(center|left|right)\b/)?.[1];
+      for (const p of paras) {
+        const pAlign = (p.getAttribute('class') || '').match(/\btext-(center|left|right)\b/)?.[1];
+        if (hAlign && pAlign && hAlign !== pAlign) return true;
+        if (wrapperAlign && hAlign && wrapperAlign !== hAlign) return true;
+        if (wrapperAlign && pAlign && wrapperAlign !== pAlign) return true;
+      }
+    }
+  }
+  // Also check md:text-left overriding base text-center
+  const headerDiv = section.querySelector('div[class*="md:text-left"]');
+  if (headerDiv) {
+    const cls = headerDiv.getAttribute('class') || '';
+    if (/\btext-center\b/.test(cls) && /\bmd:text-left\b/.test(cls)) return true;
+  }
+  return false;
 }
 
 function isHeroSection(section: Element): boolean {
@@ -196,6 +259,44 @@ function improveSocialProofLayout(html: string): string {
   return nextHtml;
 }
 
+// ─── Low-contrast text fix ──────────────────────────────────────
+
+function fixLowContrastText(html: string): string {
+  // Replace dark text utilities with white equivalents when on colored backgrounds
+  return html
+    .replace(/\btext-gray-900\b/g, 'text-white')
+    .replace(/\btext-gray-800\b/g, 'text-white')
+    .replace(/\btext-gray-700\b/g, 'text-white')
+    .replace(/\btext-gray-600\b/g, 'text-white\/80')
+    .replace(/\btext-slate-900\b/g, 'text-white')
+    .replace(/\btext-slate-800\b/g, 'text-white')
+    .replace(/\btext-slate-700\b/g, 'text-white')
+    .replace(/\btext-slate-600\b/g, 'text-white\/80');
+}
+
+// ─── Low-opacity image fix ──────────────────────────────────────
+
+function fixLowOpacityImages(html: string): string {
+  // Remove Tailwind low-opacity classes from img tags (opacity-0 through opacity-40)
+  return html.replace(
+    /(<img\b[^>]*)\s+opacity-([0-9]|[1-3][0-9]|40)\b([^>]*>)/g,
+    '$1$3',
+  ).replace(
+    /(<img\b[^>]*style="[^"]*?)opacity\s*:\s*0\.[0-3][^;"]*;?([^"]*")/g,
+    '$1$2',
+  );
+}
+
+// ─── Alignment mismatch fix ──────────────────────────────────────
+
+function fixAlignmentMismatch(html: string): string {
+  // Remove md:text-left from wrappers that also have text-center â€” enforce consistent centering
+  return html.replace(
+    /class="([^"]*\btext-center\b[^"]*?)\s*md:text-left\b([^"]*)"/g,
+    'class="$1$2"',
+  );
+}
+
 // ─── Public API ─────────────────────────────────────────────────
 
 export function validateGeneratedHtml(fullHtml: string): ValidationIssue[] {
@@ -278,7 +379,7 @@ export function validateGeneratedHtml(fullHtml: string): ValidationIssue[] {
     }
   });
 
-  // Placeholder images
+  // Placeholder images + low-opacity image check
   Array.from(doc.querySelectorAll('img')).forEach((image) => {
     if (isMissingImageSource(image.getAttribute('src'))) {
       const blockId = image.closest('section')?.getAttribute('data-block-id') || undefined;
@@ -288,41 +389,110 @@ export function validateGeneratedHtml(fullHtml: string): ValidationIssue[] {
         message: 'One or more images are missing a real src value or still use a placeholder source.',
         blockId,
       });
+    } else if (hasLowOpacity(image)) {
+      // Image is present but nearly invisible
+      const blockId = image.closest('section')?.getAttribute('data-block-id') || undefined;
+      issues.push({
+        type: 'warning',
+        code: 'low-opacity-image',
+        message: 'An image has a very low opacity class applied and may be nearly invisible.',
+        blockId,
+      });
     }
   });
 
   // Per-section checks
   Array.from(doc.querySelectorAll('section')).forEach((section) => {
+    const blockId = section.getAttribute('data-block-id') || undefined;
+    const sectionId = section.getAttribute('id') || blockId || 'section';
+
     if (!hasExplicitBackground(section)) {
-      const sectionId = section.getAttribute('id') || section.getAttribute('data-block-id') || 'section';
       issues.push({
         type: 'warning',
         code: 'missing-background',
         message: `Section "${sectionId}" is missing an explicit background class or style.`,
-        blockId: section.getAttribute('data-block-id') || undefined,
+        blockId,
         targetId: section.getAttribute('id') || undefined,
       });
     }
 
     if (isHeroSection(section) && usesViewportHeight(section) && !hasIntentionalVerticalBalancing(section)) {
-      const sectionId = section.getAttribute('id') || section.getAttribute('data-block-id') || 'hero';
       issues.push({
         type: 'warning',
         code: 'hero-balance',
         message: `Hero section "${sectionId}" uses full-viewport height without clear vertical balancing.`,
-        blockId: section.getAttribute('data-block-id') || undefined,
+        blockId,
         targetId: section.getAttribute('id') || undefined,
       });
     }
 
     if (isSocialProofSection(section) && hasCrowdedSocialProofLayout(section)) {
-      const sectionId = section.getAttribute('id') || section.getAttribute('data-block-id') || 'social-proof';
       issues.push({
         type: 'warning',
         code: 'social-proof-layout',
         message: `Social proof section "${sectionId}" uses a cramped desktop metrics grid.`,
-        blockId: section.getAttribute('data-block-id') || undefined,
+        blockId,
         targetId: section.getAttribute('id') || undefined,
+      });
+    }
+
+    // Low-contrast text: dark text inside a strongly-colored background section
+    if (hasDarkOrColoredBackground(section)) {
+      const darkEls = findDarkTextElements(section);
+      if (darkEls.length > 0) {
+        issues.push({
+          type: 'warning',
+          code: 'low-contrast-text',
+          message: `Section "${sectionId}" has dark text utilities (e.g. text-gray-900) on a colored background — text may be unreadable.`,
+          blockId,
+          targetId: section.getAttribute('id') || undefined,
+        });
+      }
+    }
+
+    // Alignment mismatch: heading and subtext using different alignment in the same wrapper
+    if (hasAlignmentMismatch(section)) {
+      issues.push({
+        type: 'warning',
+        code: 'alignment-mismatch',
+        message: `Section "${sectionId}" has inconsistent text alignment between headings and body copy.`,
+        blockId,
+        targetId: section.getAttribute('id') || undefined,
+      });
+    }
+  });
+
+  // Redundant same-section anchor links in navigation blocks
+  const navBlocks = Array.from(doc.querySelectorAll('section[data-block-id]')).filter((s) =>
+    blockContainsNavigationChrome({ id: s.getAttribute('data-block-id') || '', label: '', html: s.outerHTML }),
+  );
+  navBlocks.forEach((navSection) => {
+    const blockId = navSection.getAttribute('data-block-id') || undefined;
+    const firstSection = doc.querySelector('section[data-block-id]');
+    const firstSectionId = firstSection?.getAttribute('id') || firstSection?.getAttribute('data-block-id');
+    const anchors = Array.from(navSection.querySelectorAll('a[href^="#"]'));
+    // The logo-like anchor is the first anchor that contains an icon or image
+    const logoAnchor = anchors.find((a) => {
+      const cls = a.getAttribute('class') || '';
+      return a.querySelector('img,svg,i[data-lucide]') || /flex-shrink-0|logo|brand/.test(cls);
+    });
+    const logoTarget = logoAnchor?.getAttribute('href')?.slice(1);
+
+    if (logoTarget && firstSectionId) {
+      anchors.forEach((anchor) => {
+        if (anchor === logoAnchor) return;
+        const href = anchor.getAttribute('href') || '';
+        const target = href.slice(1);
+        if (target && (target === logoTarget || target === firstSectionId)) {
+          issues.push({
+            type: 'warning',
+            code: 'redundant-nav-link',
+            message: `Navigation has a redundant "${anchor.textContent?.trim()}" link (${href}) — the logo already scrolls there.`,
+            blockId,
+            href,
+            targetId: target,
+          });
+        }
       });
     }
   });
@@ -431,6 +601,48 @@ export function autoFixIssues(blocks: Block[], issues: ValidationIssue[]): {
           : block,
       );
       applied.push(`Rebalanced the social proof grid in ${issue.blockId}.`);
+    }
+
+    if (issue.code === 'low-contrast-text' && issue.blockId) {
+      nextBlocks = nextBlocks.map((block) =>
+        block.id === issue.blockId
+          ? { ...block, html: fixLowContrastText(block.html) }
+          : block,
+      );
+      applied.push(`Fixed low-contrast dark text in ${issue.blockId} — switched to white text on colored background.`);
+    }
+
+    if (issue.code === 'low-opacity-image' && issue.blockId) {
+      nextBlocks = nextBlocks.map((block) =>
+        block.id === issue.blockId
+          ? { ...block, html: fixLowOpacityImages(block.html) }
+          : block,
+      );
+      applied.push(`Removed near-invisible opacity class from image in ${issue.blockId}.`);
+    }
+
+    if (issue.code === 'alignment-mismatch' && issue.blockId) {
+      nextBlocks = nextBlocks.map((block) =>
+        block.id === issue.blockId
+          ? { ...block, html: fixAlignmentMismatch(block.html) }
+          : block,
+      );
+      applied.push(`Fixed heading/body alignment inconsistency in ${issue.blockId}.`);
+    }
+
+    if (issue.code === 'redundant-nav-link' && issue.blockId && issue.href) {
+      // Remove the redundant anchor element entirely from the nav block
+      nextBlocks = nextBlocks.map((block) => {
+        if (block.id !== issue.blockId) return block;
+        // Match the full <a href="#TARGET">...</a> tag and remove it
+        const escapedHref = issue.href!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const anchorPattern = new RegExp(
+          `<a\\b[^>]*href="${escapedHref}"[^>]*>[\\s\\S]*?<\/a>`,
+          'gi',
+        );
+        return { ...block, html: block.html.replace(anchorPattern, '') };
+      });
+      applied.push(`Removed redundant nav link "${issue.href}" from ${issue.blockId} (logo already scrolls there).`);
     }
   }
 

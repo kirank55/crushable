@@ -55,7 +55,7 @@ export default function HomePage() {
   return (
     <div className="project-fullscreen">
       <div className="project-fullscreen-inner">
-        <div className="project-fullscreen-header">
+        <div className="project-fullscreen-header flex justify-between">
           <div className="project-fullscreen-brand">
             <Layers3 size={28} strokeWidth={1.5} />
             <h1>Crushable</h1>
@@ -66,10 +66,10 @@ export default function HomePage() {
         <div className="project-hero">
           <div className="project-hero-copy">
             <span className="project-hero-eyebrow">AI project builder</span>
-            <h2>Build a polished landing page from a single product brief.</h2>
+            <h2>Build a landing page from a single product brief.</h2>
             <p>
-              Describe what you are building, generate a page plan, refine sections in chat, and
-              export clean HTML when it is ready.
+              Describe what you are building and
+              export clean HTML is ready.
             </p>
             <div className={`project-brief-card ${triedToCreate && !canCreateProject ? 'error' : ''}`}>
               <label htmlFor="product-brief" className="project-brief-label">
@@ -111,12 +111,15 @@ export default function HomePage() {
           </div>
         </div>
 
-        {recentProjects.length > 0 && (
-          <div className="recent-projects-section">
-            <div className="recent-projects-header">
-              <Clock size={16} />
-              <h3>Recent Projects</h3>
-            </div>
+        {/* {recentProjects.length > 0 && ( */}
+        <div className="recent-projects-section">
+          <div className="recent-projects-header">
+            <Clock size={16} />
+            <h3>Recent Projects</h3>
+          </div>
+
+          {recentProjects.length > 0 ? (
+
             <div className="recent-projects-grid">
               {recentProjects.map((project) => (
                 <div
@@ -145,8 +148,10 @@ export default function HomePage() {
                 </div>
               ))}
             </div>
-          </div>
-        )}
+
+          ) : <div className="recent-projects-grid">No recent projects</div>}
+
+        </div>
 
         <div className="project-footer-actions">
           <span className="settings-link-note">

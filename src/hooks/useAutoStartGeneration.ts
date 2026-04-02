@@ -46,7 +46,7 @@ export function useAutoStartGeneration({
       id: uuidv4(),
       role: 'assistant',
       content:
-        'Project created! You can bookmark this URL to return to it anytime.\n\nGenerating your page now…',
+        'Project created!\n\nGenerating your page now…',
       timestamp: Date.now(),
     };
 

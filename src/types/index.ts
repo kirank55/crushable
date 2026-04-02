@@ -31,7 +31,7 @@ export interface Message {
   summary?: string;
   blockId?: string;
   timestamp?: number;
-  /** Section plan text (persisted after planning phase). */
+  /** Section plan text. */
   plan?: string[];
   /** Per-section progress (persisted after generation). */
   sectionProgress?: Array<{ id: string; label: string; status: 'pending' | 'generating' | 'done' | 'error' }>;

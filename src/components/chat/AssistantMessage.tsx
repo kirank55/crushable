@@ -6,9 +6,9 @@ import { formatRelativeDate } from '@/lib/date';
 
 function SectionStatusIcon({ status }: { status: string }) {
   switch (status) {
-    case 'done':  return <CheckCircle2 size={12} className="done-icon" />;
+    case 'done': return <CheckCircle2 size={12} className="done-icon" />;
     case 'error': return <AlertCircle size={12} className="error-icon" />;
-    default:      return <span className="pending-dot" />;
+    default: return <span className="pending-dot" />;
   }
 }
 
@@ -41,10 +41,7 @@ function PersistedProgress({ message }: { message: Message }) {
 export default function AssistantMessage({ message }: { message: Message }) {
   return (
     <div className="chat-message assistant">
-      <div className="message-content">
-        <div className="assistant-message-header">
-          <Sparkles size={12} className="assistant-icon" />
-        </div>
+      <div className="message-content" style={{ background: 'transparent' }}>
 
         {/* Persisted plan + progress */}
         <PersistedProgress message={message} />

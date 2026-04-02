@@ -1,6 +1,5 @@
 'use client';
 
-import { Sparkles } from 'lucide-react';
 import { ChatProvider } from '@/context/ChatContext';
 import ChatMessageList from './chat/ChatMessageList';
 import ChatInputArea from './chat/ChatInputArea';
@@ -16,7 +15,6 @@ export default function ChatPanel({ isFullScreen }: ChatPanelProps) {
     <ChatProvider>
       <div className={`chat-panel ${isFullScreen ? 'full-screen' : ''}`}>
         <div className="chat-header">
-          <Sparkles size={16} />
           <span>Chat</span>
         </div>
 

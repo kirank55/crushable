@@ -193,6 +193,8 @@ export function useInitialGeneration() {
         setSavedMessages: onMessagesChange,
         replaceAllBlocks: onReplaceAllBlocks,
         createVersionSnapshot: onVersionCreated,
+        projectName,
+        handleRename,
     } = usePageStateContext();
 
     const [isLoading, setIsLoading] = useState(false);
@@ -311,6 +313,15 @@ export function useInitialGeneration() {
                 let committedBlocks = validBlocks;
                 let validationNote = '';
                 try {
+                    if (projectName === 'Untitled Project') {
+                        const allHtml = validBlocks.map(b => b.html).join('\n');
+                        const h1Match = allHtml.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+                        if (h1Match && h1Match[1]) {
+                            const newTitle = h1Match[1].replace(/<[^>]*>?/gm, '').trim();
+                            if (newTitle) handleRename(newTitle);
+                        }
+                    }
+
                     const fullHtml = generateFullHTML(validBlocks);
                     const issues = validateGeneratedHtml(fullHtml);
                     logger.info('generateFullPage: validation', { issueCount: issues.length });

@@ -181,6 +181,7 @@ export default function Toolbar() {
           <button className="header-action-btn" title="Versions" onClick={toggleVersions}>
             <History size={16} />
           </button>
+          {/*
           {chatVisible ? (
             <button
               className="header-action-btn"
@@ -198,6 +199,7 @@ export default function Toolbar() {
               <MessageSquare size={16} />
             </button>
           )}
+          */}
         </div>
       </div>
 
@@ -285,10 +287,12 @@ export default function Toolbar() {
         </div>
 
         <div className="toolbar-primary-group">
+          {/*
           <button className="toolbar-btn settings-btn" title="Model Settings">
             <Settings size={18} />
             <span className="btn-label">Model</span>
           </button>
+          */}
           <button
             onClick={handleSave}
             className="toolbar-btn save-btn"

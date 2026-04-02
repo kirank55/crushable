@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Sparkles, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { useChatContext } from '@/context/ChatContext';
 import UserMessage from './UserMessage';
 import AssistantMessage from './AssistantMessage';
@@ -10,7 +10,6 @@ import GenerationProgress from './GenerationProgress';
 function EmptyState() {
   return (
     <div className="chat-empty">
-      <Sparkles size={28} />
       <h3>What are we building?</h3>
       <p>Describe your project and the AI will generate a landing page for you.</p>
     </div>

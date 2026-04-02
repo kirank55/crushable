@@ -2,6 +2,7 @@
 
 import { createContext, useContext } from 'react';
 import { Block, Message, Version } from '@/types';
+import type { DesignStyleId } from '@/lib/initial-generation/design-styles';
 
 export type ViewMode = 'preview' | 'code' | 'console';
 
@@ -13,6 +14,8 @@ export interface PageStateContextValue {
   versions: Version[];
   isDirty: boolean;
   projectName: string;
+  productDescription: string;
+  designStyle?: DesignStyleId;
   currentVersionIndex: number | null;
 
   // UI state
@@ -41,6 +44,7 @@ export interface PageStateContextValue {
   // Actions — project
   handleSave: () => void;
   handleRename: (name: string) => void;
+  setProjectMetadata: (metadata: { productDescription?: string; designStyle?: DesignStyleId }) => void;
 }
 
 const PageStateContext = createContext<PageStateContextValue | null>(null);

@@ -7,13 +7,15 @@
 
 import { useState, useRef, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Block, Message } from '@/types';
+import { Message } from '@/types';
 import { getApiKey, getModel } from '@/lib/storage';
-import { createBlock } from '@/lib/blocks';
+import { createBlock, enforceSectionBrandName } from '@/lib/blocks';
+import { getDesignStylePrompt } from '@/lib/initial-generation/design-styles';
 import { parseResponse } from '@/lib/shared/prompt-utils';
 import { logger } from '@/lib/logger';
 import { usePageStateContext } from '@/context/PageStateContext';
 import { extractBlockExcerpt } from '@/lib/modification/extract-excerpt';
+import { buildProjectContext } from '@/lib/project-context';
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -106,6 +108,9 @@ export function useModificationEngine() {
         blocks,
         selectedBlockId,
         savedMessages: messages,
+        projectName,
+        productDescription,
+        designStyle,
         setSavedMessages: onMessagesChange,
         addBlockSmart: onAddBlockSmart,
         updateBlock: onUpdateBlock,
@@ -173,6 +178,10 @@ export function useModificationEngine() {
                     .map((b) => `- "${b.label}" (id: ${b.id})`)
                     .join('\n');
 
+                const originalBrief = currentMessages.find((message) => message.role === 'user')?.content || '';
+                const designStylePrompt = designStyle ? getDesignStylePrompt(designStyle) : undefined;
+                const projectContext = buildProjectContext(originalBrief, productDescription || undefined, projectName);
+
                 const { text, intent, mode } = await fetchModification(
                     {
                         prompt: userPrompt,
@@ -180,6 +189,8 @@ export function useModificationEngine() {
                         fullBlocks,
                         selectedBlockId,
                         existingSectionsSummary,
+                        designStylePrompt,
+                        projectContext,
                     },
                     signal,
                 );
@@ -204,7 +215,8 @@ export function useModificationEngine() {
                     case 'add-section': {
                         setStatusText('Adding new section…');
                         const { summary: addSummary, html } = parseResponse(text);
-                        const block = createBlock(html);
+                        const normalizedHtml = enforceSectionBrandName(html, projectName);
+                        const block = createBlock(normalizedHtml);
                         onAddBlockSmart(block);
                         summary = addSummary || 'Added a new section.';
                         break;
@@ -269,7 +281,7 @@ export function useModificationEngine() {
                 abortRef.current = null;
             }
         },
-        [onMessagesChange, onAddBlockSmart, onUpdateBlock, onRemoveBlock, onVersionCreated, selectedBlockId],
+        [onMessagesChange, onAddBlockSmart, onUpdateBlock, onRemoveBlock, onVersionCreated, selectedBlockId, productDescription, designStyle, projectName],
     );
 
     return {

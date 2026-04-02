@@ -39,6 +39,8 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
     versions: state.versions,
     isDirty: state.isDirty,
     projectName: state.projectName,
+    productDescription: state.productDescription,
+    designStyle: state.designStyle,
     currentVersionIndex: state.currentVersionIndex,
     addBlockSmart: state.addBlockSmart,
     removeBlock: state.removeBlock,
@@ -50,6 +52,7 @@ export default function BuilderPage({ params }: { params: Promise<{ id: string }
     restoreCurrentBlocks: state.restoreCurrentBlocks,
     handleSave: state.handleSave,
     handleRename: state.handleRename,
+    setProjectMetadata: state.setProjectMetadata,
   };
 
   return (

@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Block, Project, Version, Message } from '@/types';
+import type { DesignStyleId } from '@/lib/initial-generation/design-styles';
 import { v4 as uuidv4 } from 'uuid';
 import { duplicateExistingBlock as duplicateBlockData } from '@/lib/blocks';
 import { logger } from '@/lib/logger';
@@ -28,6 +29,8 @@ export function usePageState(projectId?: string) {
   const [currentVersionIndex, setCurrentVersionIndex] = useState<number | null>(null);
   const [undoStack, setUndoStack] = useState<Block[][]>([]);
   const [savedMessages, setSavedMessages] = useState<Message[]>([]);
+  const [productDescription, setProductDescription] = useState('');
+  const [designStyle, setDesignStyle] = useState<DesignStyleId | undefined>(undefined);
 
   // ── Refs ───────────────────────────────────────────────────────
 
@@ -47,12 +50,16 @@ export function usePageState(projectId?: string) {
       setProjectName(data.name);
       setVersions(data.versions);
       setSavedMessages(data.messages);
+      setProductDescription(data.productDescription || '');
+      setDesignStyle(data.designStyle);
       latestBlocksRef.current = [...data.blocks];
     } else {
       setBlocks([]);
       setProjectName(DEFAULT_PROJECT_NAME);
       setVersions([]);
       setSavedMessages([]);
+      setProductDescription('');
+      setDesignStyle(undefined);
       latestBlocksRef.current = [];
     }
 
@@ -81,10 +88,12 @@ export function usePageState(projectId?: string) {
       blocks: blocksToSave,
       versions,
       messages: savedMessages,
+      productDescription: productDescription || undefined,
+      designStyle,
     });
     if (saved) setIsDirty(false);
     else setIsDirty(false); // empty project — nothing to save, clear dirty
-  }, [storage, projectName, blocks, versions, savedMessages]);
+  }, [storage, projectName, blocks, versions, savedMessages, productDescription, designStyle]);
 
   useEffect(() => {
     if (!isDirty || !storage.projectId) return;
@@ -312,11 +321,32 @@ export function usePageState(projectId?: string) {
     setProjectName(data.name);
     setVersions(data.versions);
     setSavedMessages(data.messages);
+    setProductDescription(data.productDescription || '');
+    setDesignStyle(data.designStyle);
     setCurrentVersionIndex(null);
     setSelectedBlockId(null);
     setUndoStack([]);
     setIsDirty(false);
   }, [storage]);
+
+  const setProjectMetadata = useCallback((metadata: { productDescription?: string; designStyle?: DesignStyleId }) => {
+    const nextDescription = metadata.productDescription?.trim() || '';
+    const nextDesignStyle = metadata.designStyle;
+
+    if (nextDescription === productDescription && nextDesignStyle === designStyle) {
+      return;
+    }
+
+    if (nextDescription !== productDescription) {
+      setProductDescription(nextDescription);
+    }
+
+    if (nextDesignStyle !== designStyle) {
+      setDesignStyle(nextDesignStyle);
+    }
+
+    setIsDirty(true);
+  }, [productDescription, designStyle]);
 
   const persistMessages = useCallback((messages: Message[]) => {
     setSavedMessages(messages);
@@ -325,8 +355,10 @@ export function usePageState(projectId?: string) {
       name: projectName,
       blocks: blocksToSave,
       versions,
+      productDescription: productDescription || undefined,
+      designStyle,
     });
-  }, [storage, projectName, versions]);
+  }, [storage, projectName, versions, productDescription, designStyle]);
 
   // ── Public API (unchanged) ────────────────────────────────────
 
@@ -338,6 +370,8 @@ export function usePageState(projectId?: string) {
     isDirty,
     isReady: storage.isReady,
     projectName,
+    productDescription,
+    designStyle,
     versions,
     canUndo: undoStack.length > 0,
     savedMessages,
@@ -357,6 +391,7 @@ export function usePageState(projectId?: string) {
     handleSave,
     handleLoad,
     handleRename,
+    setProjectMetadata,
     undo,
     setSavedMessages: persistMessages,
   };

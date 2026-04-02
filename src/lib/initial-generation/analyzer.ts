@@ -8,6 +8,7 @@
 import { AnalyzedRequest, RequestValidationError } from '@/lib/shared/types';
 import {
     getSystemPrompt,
+    buildDescriptionPrompt,
     buildPlanPrompt,
     buildDetailedPlanPrompt,
     buildStyleSelectPrompt,
@@ -17,6 +18,7 @@ import {
 import { logger } from '@/lib/logger';
 
 export type InitialGenerationMode =
+    | 'describe'
     | 'plan'
     | 'detailed-plan'
     | 'style-select'
@@ -26,6 +28,8 @@ export type InitialGenerationMode =
 export interface InitialGenerationRequestBody {
     prompt?: string;
     mode: InitialGenerationMode;
+    productDescription?: string;
+    designStyle?: string;
     designStylePrompt?: string;
     projectContext?: string;
     fullHtml?: string;
@@ -46,10 +50,10 @@ export interface InitialGenerationRequestBody {
  * because the initial generation flow is deterministic: plan → build sections.
  */
 export function analyzeInitialRequest(body: InitialGenerationRequestBody): AnalyzedRequest {
-    const { prompt, mode, designStylePrompt, projectContext, fullHtml, planDetails } = body;
+    const { prompt, mode, productDescription, designStyle, designStylePrompt, projectContext, fullHtml, planDetails } = body;
 
     // ── Validation ──────────────────────────────────────────────────
-    const promptRequiredModes: InitialGenerationMode[] = ['plan', 'style-select'];
+    const promptRequiredModes: InitialGenerationMode[] = ['describe', 'plan', 'style-select', 'new'];
 
     if (!prompt && promptRequiredModes.includes(mode)) {
         logger.error('analyzeInitialRequest', `Missing prompt for mode "${mode}"`);
@@ -58,13 +62,23 @@ export function analyzeInitialRequest(body: InitialGenerationRequestBody): Analy
 
     // ── Mode resolution (deterministic — no inference) ──────────────
     switch (mode) {
+        case 'describe': {
+            logger.info('analyzeInitialRequest: describe mode');
+            return {
+                mode: 'describe',
+                systemPrompt:
+                    'You convert raw homepage briefs into concise product descriptions for downstream planning. Return plain text only with no bullets, markdown, or labels.',
+                userPrompt: buildDescriptionPrompt(prompt!),
+            };
+        }
+
         case 'plan': {
             logger.info('analyzeInitialRequest: plan mode');
             return {
                 mode: 'plan',
                 systemPrompt:
                     'You are a landing page planner. Given a user request, return a JSON array of section names to build. Choose 4-6 sections.',
-                userPrompt: buildPlanPrompt(prompt!),
+                userPrompt: buildPlanPrompt(prompt!, productDescription, designStyle),
             };
         }
 

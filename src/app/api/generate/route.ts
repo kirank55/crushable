@@ -2,7 +2,7 @@
  * POST /api/generate — handles initial generation only.
  *
  * All modification paths have been moved to /api/modify.
- * This route handles: plan, detailed-plan, style-select, validate, new.
+ * This route handles: describe, plan, detailed-plan, style-select, validate, new.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -23,6 +23,8 @@ export async function POST(req: NextRequest) {
             mode,
             model,
             hasApiKey: !!apiKey,
+            hasProductDescription: !!body.productDescription,
+            hasDesignStyleLabel: !!body.designStyle,
             hasDesignStyle: !!body.designStylePrompt,
             hasProjectContext: !!body.projectContext,
         });

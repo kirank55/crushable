@@ -5,6 +5,8 @@
  * Moved from the monolithic prompt.ts.
  */
 
+import { DESIGN_STYLE_IDS } from './design-styles';
+
 export function getSystemPrompt(designStylePrompt?: string, projectContext?: string): string {
     const designInstruction = designStylePrompt
         ? `\nDESIGN SYSTEM:\n${designStylePrompt}\nYou MUST follow this design system consistently for ALL sections. Use the specified colors, typography, spacing, and visual style.\n`
@@ -119,11 +121,36 @@ ${userRequest}
 Create a complete new <section> with the described content. Include a meaningful data-block-id attribute. Return using the exact format with ---SUMMARY--- and ---HTML--- sections.`;
 }
 
-export function buildPlanPrompt(userRequest: string): string {
+export function buildDescriptionPrompt(userRequest: string): string {
+    return `Rewrite the following homepage brief as a concise product description for downstream page planning and design selection.
+
+Rules:
+- Return plain text only.
+- Use 2-4 sentences.
+- Preserve the core product, audience, and value proposition.
+- Remove filler, repetition, and vague marketing phrasing.
+- Do not invent features that are not implied by the brief.
+
+Homepage brief:
+${userRequest}`;
+}
+
+export function buildPlanPrompt(
+    userRequest: string,
+    productDescription?: string,
+    designStyleLabel?: string,
+): string {
+    const normalizedDescription = productDescription?.trim()
+        ? `Normalized product description:\n${productDescription.trim()}\n\n`
+        : '';
+    const designDirection = designStyleLabel?.trim()
+        ? `Preferred design style: ${designStyleLabel.trim()}\n\n`
+        : '';
+
     return `USER REQUEST:
 ${userRequest}
 
-You are planning sections for a landing page. Return ONLY a JSON object with two keys:
+${normalizedDescription}${designDirection}You are planning sections for a landing page. Return ONLY a JSON object with two keys:
 1. "brandName" — a single short word that best represents the brand or product name (e.g. "Crushable", "Acme", "Flux"). Derive it from the user's request. If no brand is obvious, invent a fitting one-word name that suits the product.
 2. "sections" — an array of section descriptions to build, in order.
 
@@ -194,17 +221,15 @@ IMPORTANT RULES:
 }
 
 export function buildStyleSelectPrompt(productDescription: string): string {
+    const styleOptions = DESIGN_STYLE_IDS.map((styleId) => `- ${styleId}`).join('\n');
+
     return `Choose the best design style ID for this product description.
 
 Available style IDs:
-- professional
-- playful
-- minimal
-- bold
-- elegant
+${styleOptions}
 
 Rules:
-- Return ONLY one of the five style IDs.
+- Return ONLY one of the available style IDs.
 - Do not add punctuation, markdown, or explanation.
 
 Product description:

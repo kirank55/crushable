@@ -10,12 +10,14 @@ import { useState, useRef, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { Block, Message } from '@/types';
 import { getApiKey, getModel } from '@/lib/storage';
-import { createBlock, buildBlockLabel, setRootSectionIdentifiers } from '@/lib/blocks';
+import { createBlock, buildBlockLabel, enforceSectionBrandName, setRootSectionIdentifiers } from '@/lib/blocks';
 import { parsePlanResponse, parseResponse } from '@/lib/shared/prompt-utils';
+import { getDesignStyleLabel, getDesignStylePrompt, normalizeDesignStyleId } from '@/lib/initial-generation/design-styles';
 import { logger } from '@/lib/logger';
 import { generateFullHTML } from '@/lib/export';
 import { validateGeneratedHtml, autoFixIssues } from '@/lib/validate';
 import { usePageStateContext } from '@/context/PageStateContext';
+import { buildProjectContext } from '@/lib/project-context';
 
 // ─── Public types ────────────────────────────────────────────────
 
@@ -195,6 +197,7 @@ export function useInitialGeneration() {
         createVersionSnapshot: onVersionCreated,
         projectName,
         handleRename,
+        setProjectMetadata,
     } = usePageStateContext();
 
     const [isLoading, setIsLoading] = useState(false);
@@ -255,11 +258,54 @@ export function useInitialGeneration() {
             ]);
 
             try {
-                // 3. Request section plan
+                // 3. Normalize the brief into a reusable product description
+                setStatusText('Understanding your product');
+                let productDescription = userPrompt.trim();
+
+                try {
+                    logger.info('generateFullPage: requesting product description');
+                    const { text: descriptionRaw } = await fetchGeneration({ prompt: userPrompt, mode: 'describe' }, signal);
+                    if (descriptionRaw.trim()) {
+                        productDescription = descriptionRaw.trim();
+                    }
+                } catch (descriptionError) {
+                    if (signal.aborted) throw descriptionError;
+                    logger.error('generateFullPage: describe failed, falling back to raw brief', descriptionError);
+                }
+
+                // 4. Select a design style before planning or section generation
+                setStatusText('Choosing a design style');
+                let designStyle = normalizeDesignStyleId();
+
+                try {
+                    logger.info('generateFullPage: requesting design style');
+                    const { text: styleRaw } = await fetchGeneration({ prompt: productDescription, mode: 'style-select' }, signal);
+                    designStyle = normalizeDesignStyleId(styleRaw);
+                } catch (styleError) {
+                    if (signal.aborted) throw styleError;
+                    logger.error('generateFullPage: style-select failed, falling back to professional', styleError);
+                }
+
+                setProjectMetadata({ productDescription, designStyle });
+
+                // 5. Request section plan using the brief plus normalized description/style
                 logger.info('generateFullPage: requesting section plan');
-                const { text: planRaw } = await fetchGeneration({ prompt: userPrompt, mode: 'plan' }, signal);
+                setStatusText('Planning your page sections');
+                const { text: planRaw } = await fetchGeneration(
+                    {
+                        prompt: userPrompt,
+                        productDescription,
+                        designStyle: getDesignStyleLabel(designStyle),
+                        mode: 'plan',
+                    },
+                    signal,
+                );
                 const { brandName, sections } = parsePlanResponse(planRaw);
                 logger.info('generateFullPage: plan received', { brandName, count: sections.length, sections });
+
+                const resolvedBrandName = brandName.trim() || (projectName === 'Untitled Project' ? '' : projectName);
+                const designStylePrompt = getDesignStylePrompt(designStyle);
+                const projectContext = buildProjectContext(userPrompt, productDescription, resolvedBrandName);
 
                 // Rename project immediately from the API-generated brand name
                 if (brandName && projectName === 'Untitled Project') {
@@ -270,14 +316,14 @@ export function useInitialGeneration() {
                 const sectionMap = buildSectionMap(sections);
                 const blueprints = deduplicateIds(sections);
 
-                // 4. Transition to building phase
+                // 6. Transition to building phase
                 setSectionProgress(
                     blueprints.map((b) => ({ id: b.sectionId, label: b.title, status: 'pending' as const })),
                 );
                 setPhase('building');
-                setStatusText(`Building ${sections.length} sections…`);
+                setStatusText(`Building ${sections.length} ${designStyle} sections...`);
 
-                // 5. Generate each section concurrently (bounded by semaphore)
+                // 7. Generate each section concurrently (bounded by semaphore)
                 const generatedBlocks: Array<Block | null> = new Array(blueprints.length).fill(null);
                 const semaphore = createSemaphore(MAX_CONCURRENT_SECTIONS);
 
@@ -313,9 +359,18 @@ export function useInitialGeneration() {
                                     `Page section map:\n${sectionMap}`,
                                 ].join('\n\n');
 
-                                const { text: raw } = await fetchGeneration({ prompt: sectionPrompt, mode: 'new' }, signal);
+                                const { text: raw } = await fetchGeneration(
+                                    {
+                                        prompt: sectionPrompt,
+                                        mode: 'new',
+                                        designStylePrompt,
+                                        projectContext,
+                                    },
+                                    signal,
+                                );
                                 const { html } = parseResponse(raw);
-                                const finalHtml = setRootSectionIdentifiers(html, blueprint.sectionId);
+                                const normalizedHtml = enforceSectionBrandName(html, resolvedBrandName);
+                                const finalHtml = setRootSectionIdentifiers(normalizedHtml, blueprint.sectionId);
 
                                 generatedBlocks[index] = createBlock(finalHtml, buildBlockLabel(blueprint.sectionId));
                                 updateSectionStatus(blueprint.sectionId, 'done');
@@ -333,11 +388,11 @@ export function useInitialGeneration() {
                     ),
                 );
 
-                // 6. Collect final results
+                // 8. Collect final results
                 const validBlocks = generatedBlocks.filter((b): b is Block => b !== null);
                 logger.info('generateFullPage: complete', { count: validBlocks.length });
 
-                // 7. Run validation + auto-fix silently, then commit the final corrected version
+                // 9. Run validation + auto-fix silently, then commit the final corrected version
                 let committedBlocks = validBlocks;
                 let validationNote = '';
                 try {
@@ -370,7 +425,7 @@ export function useInitialGeneration() {
                     };
                 });
 
-                const summary = `Built ${validBlocks.length} section${validBlocks.length !== 1 ? 's' : ''} for your page.${validationNote} You can ask me to refine any section or add new ones.`;
+                const summary = `Built ${validBlocks.length} section${validBlocks.length !== 1 ? 's' : ''} for your page in a ${designStyle} style.${validationNote} You can ask me to refine any section or add new ones.`;
                 onMessagesChange([
                     ...currentMessages,
                     createAssistantMessage(summary, {
@@ -398,7 +453,7 @@ export function useInitialGeneration() {
                 abortRef.current = null;
             }
         },
-        [onMessagesChange, onReplaceAllBlocks, onVersionCreated, updateSectionStatus, resetState],
+        [onMessagesChange, onReplaceAllBlocks, onVersionCreated, updateSectionStatus, resetState, projectName, handleRename, setProjectMetadata],
     );
 
     return {

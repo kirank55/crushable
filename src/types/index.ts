@@ -1,3 +1,5 @@
+import type { DesignStyleId } from '@/lib/initial-generation/design-styles';
+
 export interface Block {
   id: string;
   label: string;
@@ -19,7 +21,8 @@ export interface Project {
   blocks: Block[];
   versions?: Version[];
   messages?: Message[];
-  designStyle?: string;
+  productDescription?: string;
+  designStyle?: DesignStyleId;
   status?: 'in-progress' | 'completed';
   updatedAt: number;
 }

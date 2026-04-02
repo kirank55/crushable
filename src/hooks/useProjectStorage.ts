@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { Block, Message, Project, Version } from '@/types';
+import type { DesignStyleId } from '@/lib/initial-generation/design-styles';
 import {
   saveProject as saveProjectToStorage,
   loadProject as loadProjectFromStorage,
@@ -23,6 +24,8 @@ export interface ProjectSnapshot {
   blocks: Block[];
   versions: Version[];
   messages: Message[];
+  productDescription?: string;
+  designStyle?: DesignStyleId;
 }
 
 /** The data returned after loading a project from localStorage. */
@@ -32,6 +35,8 @@ export interface LoadedProjectData {
   blocks: Block[];
   versions: Version[];
   messages: Message[];
+  productDescription?: string;
+  designStyle?: DesignStyleId;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────
@@ -58,6 +63,8 @@ function resolveProject(routeId?: string): LoadedProjectData | null {
         blocks: project.blocks,
         versions: project.versions || [],
         messages: project.messages || [],
+        productDescription: project.productDescription,
+        designStyle: project.designStyle,
       };
     }
     return null;
@@ -74,6 +81,8 @@ function resolveProject(routeId?: string): LoadedProjectData | null {
       blocks: [],
       versions: [],
       messages: [],
+      productDescription: undefined,
+      designStyle: undefined,
     };
   }
 
@@ -89,6 +98,8 @@ function resolveProject(routeId?: string): LoadedProjectData | null {
         blocks: project.blocks,
         versions: project.versions || [],
         messages: project.messages || [],
+        productDescription: project.productDescription,
+        designStyle: project.designStyle,
       };
     }
   }
@@ -99,28 +110,19 @@ function resolveProject(routeId?: string): LoadedProjectData | null {
 // ─── Hook ───────────────────────────────────────────────────────
 
 export function useProjectStorage(routeId?: string) {
-  const [projectId, setProjectId] = useState<string | null>(null);
-  const [isReady, setIsReady] = useState(false);
-  const loadedDataRef = useRef<LoadedProjectData | null>(null);
-  const isInitialLoadRef = useRef(true);
+  const [projectSession, setProjectSession] = useState<{ routeId?: string; projectId: string | null }>({
+    routeId,
+    projectId: null,
+  });
+  const loadedData = useMemo(() => resolveProject(routeId), [routeId]);
 
-  // Load project data on mount (or when routeId changes)
+  const projectId = projectSession.routeId === routeId
+    ? (projectSession.projectId || loadedData?.id || null)
+    : (loadedData?.id || null);
+
   useEffect(() => {
-    setIsReady(false);
-
-    const data = resolveProject(routeId);
-    loadedDataRef.current = data;
-
-    if (data) {
-      setProjectId(data.id);
-      setStoredCurrentProjectId(data.id);
-    } else {
-      setProjectId(null);
-    }
-
-    isInitialLoadRef.current = false;
-    setIsReady(true);
-  }, [routeId]);
+    setStoredCurrentProjectId(projectId);
+  }, [projectId]);
 
   /**
    * Save the current editing state to localStorage.
@@ -142,16 +144,18 @@ export function useProjectStorage(routeId?: string) {
         blocks: snapshot.blocks,
         versions: snapshot.versions,
         messages: snapshot.messages,
+        productDescription: snapshot.productDescription,
+        designStyle: snapshot.designStyle,
         updatedAt: Date.now(),
       };
 
       saveProjectToStorage(project);
-      setProjectId(id);
+      setProjectSession({ routeId, projectId: id });
       setStoredCurrentProjectId(id);
       logger.action('save', { projectId: id, projectName: snapshot.name });
       return true;
     },
-    [projectId],
+    [projectId, routeId],
   );
 
   /**
@@ -168,15 +172,17 @@ export function useProjectStorage(routeId?: string) {
         blocks: snapshot.blocks,
         versions: snapshot.versions,
         messages,
+        productDescription: snapshot.productDescription,
+        designStyle: snapshot.designStyle,
         updatedAt: Date.now(),
       };
 
       saveProjectToStorage(project);
-      setProjectId(id);
+      setProjectSession({ routeId, projectId: id });
       setStoredCurrentProjectId(id);
       logger.action('persistMessages', { projectId: id, messageCount: messages.length });
     },
-    [projectId],
+    [projectId, routeId],
   );
 
   /**
@@ -185,7 +191,7 @@ export function useProjectStorage(routeId?: string) {
    */
   const loadExternal = useCallback((project: Project): LoadedProjectData => {
     logger.action('loadExternal', { id: project.id, name: project.name });
-    setProjectId(project.id);
+    setProjectSession({ routeId, projectId: project.id });
     setStoredCurrentProjectId(project.id);
     return {
       id: project.id,
@@ -193,13 +199,15 @@ export function useProjectStorage(routeId?: string) {
       blocks: project.blocks,
       versions: project.versions || [],
       messages: project.messages || [],
+      productDescription: project.productDescription,
+      designStyle: project.designStyle,
     };
-  }, []);
+  }, [routeId]);
 
   return {
     projectId,
-    isReady,
-    loadedData: loadedDataRef.current,
+    isReady: true,
+    loadedData,
     save,
     persistMessages,
     loadExternal,

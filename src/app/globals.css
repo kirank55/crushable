@@ -285,6 +285,9 @@ h3,
   transition: all var(--transition);
   justify-content: flex-start;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
 }
 
 .project-name-btn:hover {
@@ -292,24 +295,54 @@ h3,
 }
 
 .save-state {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: nowrap;
 }
 
-.save-state-label {
-  font-size: .75em;
-  font-weight: 600;
+/* The dot */
+.save-dot {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background-color 0.3s ease;
+}
+
+.save-state.clean .save-dot {
+  background-color: #4ade80; /* green-400 */
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.6);
+}
+
+.save-state.dirty .save-dot {
+  background-color: #fbbf24; /* amber-400 */
+  box-shadow: 0 0 6px rgba(251, 191, 36, 0.5);
+}
+
+/* Tooltip shown on hover via data-tooltip attribute */
+.save-state::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 8px);
+  transform: translateX(-50%);
+  background: var(--surface-2, #1e1e2e);
+  color: var(--text-primary, #e2e8f0);
+  font-size: 11px;
+  font-weight: 500;
   white-space: nowrap;
+  padding: 4px 8px;
+  border-radius: 5px;
+  border: 1px solid rgba(255,255,255,0.08);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 100;
 }
 
-.save-state.clean .save-state-label {
-  color: rgba(134, 239, 172, 0.8);
-}
-
-.save-state.dirty .save-state-label {
-  color: #fde68a;
+.save-state:hover::after {
+  opacity: 1;
 }
 
 .save-state-meta {

@@ -53,37 +53,57 @@ export function parseResponse(response: string): { summary: string; html: string
 }
 
 /**
- * Parse a plan response (JSON array of section descriptions).
+ * Parse a plan response — supports both the new `{ brandName, sections }` object
+ * and the legacy plain JSON array (backward compat with older model outputs).
  *
- * Throws if no JSON array is found or the JSON is malformed — the LLM did not
- * follow the output format and the caller must handle the error.
+ * Throws if no JSON is found or the JSON is malformed.
  *
  * Post-processing guard: ensures the plan always starts with a nav-like
  * section and ends with a footer. If the LLM forgot either, they are inserted.
  */
-export function parsePlanResponse(response: string): string[] {
-    const match = response.match(/\[[\s\S]*\]/);
+export function parsePlanResponse(response: string): { brandName: string; sections: string[] } {
+    // Try object format first: { brandName, sections }
+    const objectMatch = response.match(/\{[\s\S]*\}/);
+    if (objectMatch) {
+        try {
+            const parsed = JSON.parse(objectMatch[0]) as { brandName?: string; sections?: unknown };
+            if (Array.isArray(parsed.sections)) {
+                const sections: string[] = parsed.sections as string[];
+                const brandName = (typeof parsed.brandName === 'string' ? parsed.brandName : '').trim();
 
-    if (!match) {
+                // Ensure first section is navigation
+                if (sections.length === 0 || !NAV_PATTERN.test(sections[0])) {
+                    sections.unshift('Navigation bar with logo and links');
+                }
+                // Ensure last section is footer
+                if (sections.length === 0 || !FOOTER_PATTERN.test(sections[sections.length - 1])) {
+                    sections.push('Footer with links and social media');
+                }
+
+                return { brandName, sections };
+            }
+        } catch {
+            // fall through to array format
+        }
+    }
+
+    // Fallback: legacy plain array format
+    const arrayMatch = response.match(/\[[\s\S]*\]/);
+    if (!arrayMatch) {
         throw new Error(
-            `parsePlanResponse: LLM response contains no JSON array.\n` +
+            `parsePlanResponse: LLM response contains no JSON object or array.\n` +
             `Raw response (first 500 chars): ${response.slice(0, 500)}`,
         );
     }
 
-    const sections: string[] = JSON.parse(match[0]);
+    const sections: string[] = JSON.parse(arrayMatch[0]);
 
-    // Ensure first section is navigation
-    const hasNav = sections.length > 0 && NAV_PATTERN.test(sections[0]);
-    if (!hasNav) {
+    if (sections.length === 0 || !NAV_PATTERN.test(sections[0])) {
         sections.unshift('Navigation bar with logo and links');
     }
-
-    // Ensure last section is footer
-    const hasFooter = sections.length > 0 && FOOTER_PATTERN.test(sections[sections.length - 1]);
-    if (!hasFooter) {
+    if (sections.length === 0 || !FOOTER_PATTERN.test(sections[sections.length - 1])) {
         sections.push('Footer with links and social media');
     }
 
-    return sections;
+    return { brandName: '', sections };
 }

@@ -78,6 +78,15 @@ MOBILE NAVIGATION:
 - Example pattern: <button onclick="document.getElementById('mobile-menu').classList.toggle('hidden')">
 - Include the menu toggle script inline within the section, wrapped in a <script> tag at the end.
 
+LUCIDE ICONS:
+- ALWAYS use SVG Lucide icons via <i data-lucide="icon-name"></i> syntax.
+- The Lucide CDN script and initializer MUST be included exactly once in the navbar/header section.
+- Include this block at the end of the navbar section's <script> tag (or add its own):
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => lucide.createIcons());</script>
+- Do NOT add the Lucide script in any other section — only the navbar section.
+- Never emit <svg> tags manually for icons; always use <i data-lucide="..."> and rely on lucide.createIcons().
+
 WHEN EDITING:
 You receive the current HTML of ONE section and the user's change request.
 Your job is to:
@@ -114,19 +123,25 @@ export function buildPlanPrompt(userRequest: string): string {
     return `USER REQUEST:
 ${userRequest}
 
-You are planning sections for a landing page. Return ONLY a JSON array of section names to build, in order. Each item should be a short description of that section.
+You are planning sections for a landing page. Return ONLY a JSON object with two keys:
+1. "brandName" — a single short word that best represents the brand or product name (e.g. "Crushable", "Acme", "Flux"). Derive it from the user's request. If no brand is obvious, invent a fitting one-word name that suits the product.
+2. "sections" — an array of section descriptions to build, in order.
 
 Example output:
-["Navigation bar with logo and links", "Hero section with headline and CTA", "Features grid with 3 cards", "Testimonials section", "Pricing table with 3 tiers", "Footer with links and social media"]
+{
+  "brandName": "Nexus",
+  "sections": ["Navigation bar with logo and links", "Hero section with headline and CTA", "Features grid with 3 cards", "Testimonials section", "Pricing table with 3 tiers", "Footer with links and social media"]
+}
 
 Rules:
-- The FIRST item MUST always be a Navigation/Navbar section.
-- The LAST item MUST always be a Footer section.
+- "brandName" MUST be a single capitalized word (no spaces, no punctuation).
+- The FIRST section MUST always be a Navigation/Navbar section.
+- The LAST section MUST always be a Footer section.
 - Choose 4-8 total sections (including nav and footer) that make sense for the request.
 - Only include sections that genuinely serve the described product/page — do NOT generate random filler sections.
 - Common relevant sections: Hero, Features, Pricing, Testimonials, FAQ, CTA, How It Works, About, Contact.
 
-Return ONLY the JSON array, nothing else. No markdown, no code blocks, just the raw JSON array.`;
+Return ONLY the JSON object, nothing else. No markdown, no code blocks, just the raw JSON object.`;
 }
 
 export function buildDetailedPlanPrompt(

@@ -172,8 +172,11 @@ export default function Toolbar() {
               {projectName}
             </button>
           )}
-          <div className={`save-state ${isDirty ? 'dirty' : 'clean'}`}>
-            <span className="save-state-label">{saveState.label}</span>
+          <div
+            className={`save-state ${isDirty ? 'dirty' : 'clean'}`}
+            data-tooltip={saveState.label}
+          >
+            <span className="save-dot" />
           </div>
         </div>
 
@@ -260,7 +263,7 @@ export default function Toolbar() {
             <ExternalLink size={16} />
             <span className="btn-label">Preview in new tab</span>
           </button>
-          <input
+          {/* <input
             ref={fileInputRef}
             type="file"
             accept=".html,.htm"
@@ -274,7 +277,7 @@ export default function Toolbar() {
           >
             <Upload size={18} />
             <span className="btn-label">Import</span>
-          </button>
+          </button> */}
           <button
             onClick={() => downloadHTML(blocks, projectName)}
             className="toolbar-btn download-btn"

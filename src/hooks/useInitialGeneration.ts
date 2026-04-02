@@ -258,8 +258,14 @@ export function useInitialGeneration() {
                 // 3. Request section plan
                 logger.info('generateFullPage: requesting section plan');
                 const { text: planRaw } = await fetchGeneration({ prompt: userPrompt, mode: 'plan' }, signal);
-                const sections = parsePlanResponse(planRaw);
-                logger.info('generateFullPage: plan received', { count: sections.length, sections });
+                const { brandName, sections } = parsePlanResponse(planRaw);
+                logger.info('generateFullPage: plan received', { brandName, count: sections.length, sections });
+
+                // Rename project immediately from the API-generated brand name
+                if (brandName && projectName === 'Untitled Project') {
+                    logger.info('generateFullPage: auto-naming project from plan', { brandName });
+                    handleRename(brandName);
+                }
 
                 const sectionMap = buildSectionMap(sections);
                 const blueprints = deduplicateIds(sections);
@@ -269,7 +275,7 @@ export function useInitialGeneration() {
                     blueprints.map((b) => ({ id: b.sectionId, label: b.title, status: 'pending' as const })),
                 );
                 setPhase('building');
-                setStatusText(`Building ${sections.length} sectionsâ€¦`);
+                setStatusText(`Building ${sections.length} sections…`);
 
                 // 5. Generate each section concurrently (bounded by semaphore)
                 const generatedBlocks: Array<Block | null> = new Array(blueprints.length).fill(null);
@@ -335,15 +341,6 @@ export function useInitialGeneration() {
                 let committedBlocks = validBlocks;
                 let validationNote = '';
                 try {
-                    if (projectName === 'Untitled Project') {
-                        const allHtml = validBlocks.map(b => b.html).join('\n');
-                        const h1Match = allHtml.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
-                        if (h1Match && h1Match[1]) {
-                            const newTitle = h1Match[1].replace(/<[^>]*>?/gm, '').trim();
-                            if (newTitle) handleRename(newTitle);
-                        }
-                    }
-
                     const fullHtml = generateFullHTML(validBlocks);
                     const issues = validateGeneratedHtml(fullHtml);
                     logger.info('generateFullPage: validation', { issueCount: issues.length });

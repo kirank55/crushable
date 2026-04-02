@@ -65,11 +65,12 @@ export default function HomePage() {
 
         <div className="project-hero">
           <div className="project-hero-copy">
-            <span className="project-hero-eyebrow">AI project builder</span>
             <h2>Build a landing page from a single product brief.</h2>
             <p>
               Describe what you are building and
               export clean HTML is ready.
+              <br />
+              With a smart modification engine for easy editing, polishing and refinement.
             </p>
             <div className={`project-brief-card ${triedToCreate && !canCreateProject ? 'error' : ''}`}>
               <label htmlFor="product-brief" className="project-brief-label">

@@ -60,8 +60,8 @@ function buildSectionId(title: string, index: number): string {
     return slug || `section-${index + 1}`;
 }
 
-function buildSectionMap(sections: string[]): string {
-    return sections.map((s, i) => `${i + 1}. ${s}`).join('\n');
+function buildSectionMap(sections: Array<{ title: string; sectionId: string }>): string {
+    return sections.map((section, index) => `${index + 1}. ${section.title} -> #${section.sectionId}`).join('\n');
 }
 
 function createAssistantMessage(
@@ -313,8 +313,8 @@ export function useInitialGeneration() {
                     handleRename(brandName);
                 }
 
-                const sectionMap = buildSectionMap(sections);
                 const blueprints = deduplicateIds(sections);
+                const sectionMap = buildSectionMap(blueprints);
 
                 // 6. Transition to building phase
                 setSectionProgress(

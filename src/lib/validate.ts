@@ -297,6 +297,75 @@ function fixAlignmentMismatch(html: string): string {
   );
 }
 
+function getNavigationTargets(blocks: Block[]): Array<{ id: string; label: string }> {
+  return blocks
+    .map((block) => ({
+      id: extractRootId(block.html) || block.id,
+      label: block.label || '',
+    }))
+    .filter((target) => target.id !== 'home' && target.id !== 'nav' && target.id !== 'navbar' && target.id !== 'footer' && target.id !== 'hero');
+}
+
+function normalizeNavbarAnchors(html: string, blocks: Block[]): { html: string; changed: boolean } {
+  const section = parseSection(html);
+  if (!section) return { html, changed: false };
+
+  const navRoot = section.querySelector('nav, header');
+  if (!navRoot) return { html, changed: false };
+
+  const targets = getNavigationTargets(blocks);
+  if (targets.length === 0) return { html, changed: false };
+
+  const targetIds = new Set(targets.map((target) => target.id));
+  const anchors = Array.from(navRoot.querySelectorAll('a[href^="#"]'));
+  const logoAnchor = anchors.find((anchor) => {
+    const cls = anchor.getAttribute('class') || '';
+    return anchor.querySelector('img,svg,i[data-lucide]') || /flex-shrink-0|logo|brand/.test(cls);
+  });
+
+  const contentAnchors = anchors.filter((anchor) => anchor !== logoAnchor);
+  const usedTargetIds = new Set<string>();
+  let fallbackIndex = 0;
+  let changed = false;
+
+  const getNextFallbackTarget = (): string | null => {
+    while (fallbackIndex < targets.length) {
+      const candidate = targets[fallbackIndex++];
+      if (!usedTargetIds.has(candidate.id)) {
+        return candidate.id;
+      }
+    }
+    return null;
+  };
+
+  contentAnchors.forEach((anchor) => {
+    const href = anchor.getAttribute('href') || '';
+    const currentTarget = href.slice(1).trim();
+    const anchorText = anchor.textContent?.replace(/\s+/g, ' ').trim() || '';
+
+    let resolvedTarget = resolveAnchorTarget(anchorText, blocks);
+
+    if (!resolvedTarget && currentTarget && targetIds.has(currentTarget) && !usedTargetIds.has(currentTarget)) {
+      resolvedTarget = currentTarget;
+    }
+
+    if (!resolvedTarget || usedTargetIds.has(resolvedTarget)) {
+      resolvedTarget = getNextFallbackTarget();
+    }
+
+    if (!resolvedTarget) return;
+
+    usedTargetIds.add(resolvedTarget);
+    const desiredHref = `#${resolvedTarget}`;
+    if (href !== desiredHref) {
+      anchor.setAttribute('href', desiredHref);
+      changed = true;
+    }
+  });
+
+  return { html: changed ? section.outerHTML : html, changed };
+}
+
 // ─── Public API ─────────────────────────────────────────────────
 
 export function validateGeneratedHtml(fullHtml: string): ValidationIssue[] {
@@ -645,6 +714,16 @@ export function autoFixIssues(blocks: Block[], issues: ValidationIssue[]): {
       applied.push(`Removed redundant nav link "${issue.href}" from ${issue.blockId} (logo already scrolls there).`);
     }
   }
+
+  nextBlocks = nextBlocks.map((block) => {
+    if (!blockContainsNavigationChrome(block)) return block;
+    const { html, changed } = normalizeNavbarAnchors(block.html, nextBlocks);
+    if (changed) {
+      applied.push(`Normalized navbar anchor targets in ${block.id}.`);
+      return { ...block, html };
+    }
+    return block;
+  });
 
   return { blocks: nextBlocks, applied };
 }

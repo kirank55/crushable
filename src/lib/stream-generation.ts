@@ -29,15 +29,18 @@ export async function createGenerationStream(
     const encoder = new TextEncoder();
 
     logger.stream('createGenerationStream: starting response stream');
+    let fullResponse = '';
 
     return new ReadableStream<Uint8Array>({
         async pull(controller) {
             const { done, value } = await reader.read();
             if (done) {
                 logger.stream('createGenerationStream: response stream complete');
+                logger.info('Generation Successful. Final Response:\n', fullResponse);
                 controller.close();
                 return;
             }
+            fullResponse += value;
             controller.enqueue(encoder.encode(value));
         },
     });

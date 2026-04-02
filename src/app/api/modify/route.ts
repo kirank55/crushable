@@ -1,13 +1,13 @@
 /**
- * POST /api/generate — handles initial generation only.
+ * POST /api/modify — handles all post-generation modifications.
  *
- * All modification paths have been moved to /api/modify.
- * This route handles: plan, detailed-plan, style-select, validate, new.
+ * Resolves the user's intent via the modification engine analyzer,
+ * then either returns JSON (remove-section) or streams HTML generation.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveOpenRouterApiKey } from '@/lib/openrouter';
-import { analyzeInitialRequest } from '@/lib/initial-generation/analyzer';
+import { analyzeModificationRequest } from '@/lib/modification/analyzer';
 import { createGenerationStream } from '@/lib/stream-generation';
 import { RequestValidationError } from '@/lib/shared/types';
 import { logger } from '@/lib/logger';
@@ -17,43 +17,43 @@ export const runtime = 'edge';
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
-        const { apiKey, mode, model } = body;
+        const { apiKey, model } = body;
 
-        logger.api('/api/generate', {
-            mode,
+        logger.api('/api/modify', {
             model,
             hasApiKey: !!apiKey,
-            hasDesignStyle: !!body.designStylePrompt,
-            hasProjectContext: !!body.projectContext,
+            blockCount: body.blocks?.length || 0,
+            selectedBlockId: body.selectedBlockId || null,
         });
 
         // ── 1. Resolve API key ───────────────────────────────────────────────
         const resolvedApiKey = resolveOpenRouterApiKey(apiKey);
 
-        logger.info('API key resolution', {
-            clientKeyProvided: !!apiKey,
-            clientKeyValid: !!(typeof apiKey === 'string' && apiKey.startsWith('sk-')),
-            envKeyPresent: !!process.env.OPENROUTER_API_KEY,
-            usingSource: resolvedApiKey?.source || 'none',
-        });
-
         if (!resolvedApiKey) {
-            logger.error('/api/generate', 'No API key configured');
+            logger.error('/api/modify', 'No API key configured');
             return NextResponse.json(
                 { error: 'No API key configured. Add your OpenRouter key in Settings or set OPENROUTER_API_KEY in .env.local' },
                 { status: 401 },
             );
         }
 
-        // ── 2. Analyse the request — validate inputs & build prompts ─────────
-        const analyzed = analyzeInitialRequest(body);
+        // ── 2. Analyse the modification request (includes intent resolution) ─
+        const analyzed = await analyzeModificationRequest(body, resolvedApiKey.resolvedKey);
 
-        logger.info('Mode resolved', {
-            requestedMode: mode ?? null,
-            resolvedMode: analyzed.mode,
+        logger.info('Modification resolved', {
+            mode: analyzed.mode,
+            intentKind: analyzed.intent.kind,
         });
 
-        // ── 3. Stream the generation ─────────────────────────────────────────
+        // ── 3. Handle non-streaming operations ───────────────────────────────
+        if (analyzed.intent.kind === 'remove-section') {
+            return NextResponse.json({
+                intent: analyzed.intent,
+                mode: 'remove-section',
+            });
+        }
+
+        // ── 4. Stream the generation for edit/add/style operations ───────────
         const stream = await createGenerationStream({
             systemPrompt: analyzed.systemPrompt,
             userPrompt: analyzed.userPrompt,
@@ -66,6 +66,7 @@ export async function POST(req: NextRequest) {
                 'Content-Type': 'text/plain; charset=utf-8',
                 'Transfer-Encoding': 'chunked',
                 'X-Resolved-Mode': analyzed.mode,
+                'X-Intent': JSON.stringify(analyzed.intent),
             },
         });
 
@@ -74,7 +75,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: error.message }, { status: error.statusCode });
         }
         const message = error instanceof Error ? error.message : 'Unknown error';
-        logger.error('/api/generate', error);
+        logger.error('/api/modify', error);
         return NextResponse.json({ error: message }, { status: 500 });
     }
 }

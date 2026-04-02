@@ -8,6 +8,7 @@ export type ViewMode = 'preview' | 'code' | 'console';
 export interface PageStateContextValue {
   // State
   blocks: Block[];
+  selectedBlockId: string | null;
   savedMessages: Message[];
   versions: Version[];
   isDirty: boolean;
@@ -25,6 +26,7 @@ export interface PageStateContextValue {
 
   // Actions — blocks
   addBlockSmart: (block: Block) => void;
+  removeBlock: (id: string) => void;
   replaceAllBlocks: (blocks: Block[]) => void;
   updateBlock: (id: string, html: string) => void;
 

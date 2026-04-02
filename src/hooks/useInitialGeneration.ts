@@ -401,7 +401,7 @@ export function useInitialGeneration() {
                     logger.info('generateFullPage: validation', { issueCount: issues.length });
 
                     if (issues.length > 0) {
-                        const { blocks: fixedBlocks, applied } = autoFixIssues(validBlocks, issues);
+                        const { blocks: fixedBlocks, applied } = await autoFixIssues(validBlocks, issues);
                         if (applied.length > 0) {
                             committedBlocks = fixedBlocks;
                             validationNote = ` Auto-fixed ${applied.length} issue${applied.length !== 1 ? 's' : ''}: ${applied.slice(0, 3).join(' ')}`;

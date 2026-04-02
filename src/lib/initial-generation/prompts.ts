@@ -74,11 +74,28 @@ SECTION BACKGROUNDS:
 - Every <section> MUST include an explicit background color or gradient via Tailwind classes (e.g. bg-white, bg-gray-900, bg-gradient-to-br).
 - NEVER leave a section without a background because sections can appear against different surrounding page colors.
 
-MOBILE NAVIGATION:
-- Mobile hamburger menus MUST use inline onclick handlers with plain JavaScript.
-- The toggle script must work without external dependencies.
-- Example pattern: <button onclick="document.getElementById('mobile-menu').classList.toggle('hidden')">
-- Include the menu toggle script inline within the section, wrapped in a <script> tag at the end.
+MOBILE NAVIGATION (CRITICAL — follow this structure exactly):
+- Desktop nav links wrapper MUST have class="hidden md:flex ..." so it is hidden on mobile and visible on desktop.
+- The hamburger button MUST have class="md:hidden ..." so it only appears on mobile.
+- The mobile menu container MUST start with class="hidden ..." and use id="mobile-menu".
+- The hamburger button MUST use: onclick="document.getElementById('mobile-menu').classList.toggle('hidden')"
+- Do NOT use empty class tokens like "md:" or "hidden:" — always attach a property (e.g. "md:hidden", "md:flex").
+- Do NOT use classList.toggle('') with an empty string — always toggle 'hidden'.
+- Example navbar pattern:
+  <nav class="flex items-center justify-between h-16">
+    <a href="#hero" class="text-xl font-bold">Brand</a>
+    <div class="hidden md:flex space-x-6">
+      <a href="#features">Features</a>
+      <a href="#pricing">Pricing</a>
+    </div>
+    <button class="md:hidden p-2" onclick="document.getElementById('mobile-menu').classList.toggle('hidden')" aria-label="Toggle menu">
+      <i data-lucide="menu"></i>
+    </button>
+  </nav>
+  <div id="mobile-menu" class="hidden md:hidden">
+    <a href="#features" class="block py-2">Features</a>
+    <a href="#pricing" class="block py-2">Pricing</a>
+  </div>
 
 LUCIDE ICONS:
 - ALWAYS use SVG Lucide icons via <i data-lucide="icon-name"></i> syntax.

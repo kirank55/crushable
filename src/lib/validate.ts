@@ -16,6 +16,24 @@ function isMissingImageSource(src: string | null): boolean {
   return /placeholder|example\.com|via\.placeholder|dummyimage|your-image|image-url/.test(normalized);
 }
 
+function isInvalidImageSource(src: string | null): boolean {
+  if (!src) return true;
+  const normalized = src.trim();
+  if (!normalized) return true;
+  if (/^(data:|blob:|https?:\/\/|\/|\.\/|\.\.\/)/i.test(normalized)) {
+    if (/^https?:\/\//i.test(normalized)) {
+      try {
+        const parsed = new URL(normalized);
+        return !parsed.hostname;
+      } catch {
+        return true;
+      }
+    }
+    return false;
+  }
+  return true;
+}
+
 // Detect images with very low opacity class applied (opacity-0 to opacity-40)
 function hasLowOpacity(element: Element): boolean {
   const className = element.getAttribute('class') || '';
@@ -28,6 +46,27 @@ function hasLowOpacity(element: Element): boolean {
     return parseFloat(match[1]) < 0.4;
   })();
   return lowOpacityClass || lowOpacityStyle;
+}
+
+function hasTextContent(element: Element): boolean {
+  return (element.textContent || '').replace(/\s+/g, ' ').trim().length > 0;
+}
+
+function isVisuallyHiddenText(element: Element): boolean {
+  if (!hasTextContent(element)) return false;
+  const className = element.getAttribute('class') || '';
+  const style = element.getAttribute('style') || '';
+  const hasGradientClip = /bg-clip-text/.test(className);
+  const transparentWithoutClip = /\btext-transparent\b/.test(className) && !hasGradientClip;
+  const hiddenClass = /\b(?:hidden|invisible)\b/.test(className);
+  const lowOpacityClass = /\bopacity-([0-9]|[1-3][0-9]|40)\b/.test(className);
+  const hiddenStyle = /display\s*:\s*none|visibility\s*:\s*hidden/i.test(style);
+  const lowOpacityStyle = (() => {
+    const match = style.match(/opacity\s*:\s*([\d.]+)/i);
+    if (!match) return false;
+    return parseFloat(match[1]) < 0.4;
+  })();
+  return transparentWithoutClip || hiddenClass || lowOpacityClass || hiddenStyle || lowOpacityStyle;
 }
 
 // Check if a section has a strongly-colored background (not white/gray/transparent)
@@ -46,7 +85,22 @@ function findDarkTextElements(section: Element): Element[] {
   const darkTextPattern = /\btext-(?:gray|slate|zinc|neutral|stone)-(?:[6-9][0-9][0-9]|[6-9]00)\b|\btext-black\b/;
   return Array.from(section.querySelectorAll('[class]')).filter((el) => {
     const cls = el.getAttribute('class') || '';
-    return darkTextPattern.test(cls);
+    return hasTextContent(el) && darkTextPattern.test(cls);
+  });
+}
+
+function hasLightBackground(section: Element): boolean {
+  const className = section.getAttribute('class') || '';
+  const style = section.getAttribute('style') || '';
+  return /\bbg-(white|gray-(?:50|100|200|300)|slate-(?:50|100|200|300)|zinc-(?:50|100|200|300)|neutral-(?:50|100|200|300)|stone-(?:50|100|200|300))\b/.test(className)
+    || /background(?:-color)?\s*:\s*(white|#fff|#ffffff|rgb\(255,\s*255,\s*255\)|rgba\(255,\s*255,\s*255)/i.test(style);
+}
+
+function findLightTextElements(section: Element): Element[] {
+  const lightTextPattern = /\btext-(?:white|gray-(?:50|100|200|300)|slate-(?:50|100|200|300)|zinc-(?:50|100|200|300)|neutral-(?:50|100|200|300)|stone-(?:50|100|200|300))\b/;
+  return Array.from(section.querySelectorAll('[class]')).filter((el) => {
+    const cls = el.getAttribute('class') || '';
+    return hasTextContent(el) && lightTextPattern.test(cls);
   });
 }
 
@@ -366,6 +420,122 @@ function normalizeNavbarAnchors(html: string, blocks: Block[]): { html: string; 
   return { html: changed ? section.outerHTML : html, changed };
 }
 
+// ─── Navbar responsive fix ──────────────────────────────────────
+
+function fixNavbarResponsive(html: string): { html: string; changed: boolean } {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  const section = doc.body.querySelector('section');
+  if (!section) return { html, changed: false };
+
+  const nav = section.querySelector('nav');
+  if (!nav) return { html, changed: false };
+
+  let changed = false;
+
+  // 1. Fix desktop links container: should be "hidden md:flex"
+  //    Look for a direct child div of nav that contains anchor links (not the mobile menu)
+  const desktopLinksDiv = Array.from(nav.querySelectorAll(':scope > div')).find((div) => {
+    const id = div.getAttribute('id') || '';
+    if (id === 'mobile-menu') return false;
+    const anchors = div.querySelectorAll('a[href^="#"]');
+    return anchors.length >= 2;
+  });
+
+  if (desktopLinksDiv) {
+    const cls = desktopLinksDiv.getAttribute('class') || '';
+    // Check if it's missing "hidden" before md:flex
+    const hasMdFlex = /\bmd:flex\b/.test(cls);
+    const hasHidden = /\bhidden\b/.test(cls);
+    if (hasMdFlex && !hasHidden) {
+      desktopLinksDiv.setAttribute('class', `hidden ${cls}`.trim());
+      changed = true;
+    } else if (!hasMdFlex && !hasHidden) {
+      // No responsive classes at all — add them
+      const cleaned = cleanBrokenResponsiveTokens(cls);
+      desktopLinksDiv.setAttribute('class', `hidden md:flex ${cleaned}`.trim());
+      changed = true;
+    } else if (!hasMdFlex && hasHidden) {
+      // Has hidden but no md:flex — links would never show
+      const cleaned = cleanBrokenResponsiveTokens(cls);
+      desktopLinksDiv.setAttribute('class', `hidden md:flex ${cleaned.replace(/\bhidden\b/, '').trim()}`.trim());
+      changed = true;
+    }
+  }
+
+  // 2. Fix hamburger button: should have "md:hidden"
+  const hamburgerBtn = nav.querySelector('button[onclick*="mobile-menu"], button[aria-label*="menu" i], button[aria-label*="Menu" i]')
+    || Array.from(nav.querySelectorAll('button')).find((btn) => {
+      return btn.querySelector('i[data-lucide="menu"]') || btn.querySelector('.icon-menu');
+    });
+
+  if (hamburgerBtn) {
+    const cls = hamburgerBtn.getAttribute('class') || '';
+    if (!/\bmd:hidden\b/.test(cls)) {
+      const cleaned = cleanBrokenResponsiveTokens(cls);
+      hamburgerBtn.setAttribute('class', `md:hidden ${cleaned}`.trim());
+      changed = true;
+    }
+  }
+
+  // 3. Fix mobile menu container: should start hidden, and be hidden on md+
+  const mobileMenu = section.querySelector('#mobile-menu');
+  if (mobileMenu) {
+    const cls = mobileMenu.getAttribute('class') || '';
+    const hasHidden = /\bhidden\b/.test(cls);
+    if (!hasHidden) {
+      const cleaned = cleanBrokenResponsiveTokens(cls);
+      mobileMenu.setAttribute('class', `hidden ${cleaned}`.trim());
+      changed = true;
+    }
+  }
+
+  // 4. Fix toggle script: ensure it toggles 'hidden', not empty string
+  let resultHtml = changed ? section.outerHTML : html;
+  // Replace classList.toggle('') or classList.toggle("") with classList.toggle('hidden')
+  resultHtml = resultHtml.replace(
+    /classList\.toggle\(\s*['"]['"]\s*\)/g,
+    "classList.toggle('hidden')",
+  );
+  if (resultHtml !== (changed ? section.outerHTML : html)) {
+    changed = true;
+  }
+
+  // 5. Replace incomplete standalone "md:" or "hidden:" tokens in class attributes within nav
+  const beforeClean = resultHtml;
+  resultHtml = resultHtml.replace(
+    /class="([^"]*)"/g,
+    (match, classValue: string) => {
+      const cleaned = cleanBrokenResponsiveTokens(classValue);
+      return cleaned !== classValue ? `class="${cleaned}"` : match;
+    },
+  );
+  if (resultHtml !== beforeClean) changed = true;
+
+  // 6. Ensure hamburger onclick actually toggles hidden on mobile-menu
+  if (hamburgerBtn && mobileMenu) {
+    const onclick = hamburgerBtn.getAttribute('onclick') || '';
+    if (!onclick.includes('mobile-menu') || onclick.includes("toggle('')") || onclick.includes('toggle("")')) {
+      resultHtml = resultHtml.replace(
+        /onclick="[^"]*"/,
+        `onclick="document.getElementById('mobile-menu').classList.toggle('hidden')"`,
+      );
+      changed = true;
+    }
+  }
+
+  return { html: resultHtml, changed };
+}
+
+function cleanBrokenResponsiveTokens(classValue: string): string {
+  // Remove standalone "md:" "lg:" "sm:" "hidden:" tokens that have no property after the colon
+  return classValue
+    .split(/\s+/)
+    .filter((token) => !/^(sm|md|lg|xl|2xl|hidden):$/.test(token) && token !== '')
+    .join(' ')
+    .trim();
+}
+
 // ─── Public API ─────────────────────────────────────────────────
 
 export function validateGeneratedHtml(fullHtml: string): ValidationIssue[] {
@@ -456,6 +626,16 @@ export function validateGeneratedHtml(fullHtml: string): ValidationIssue[] {
         type: 'warning',
         code: 'missing-image-source',
         message: 'One or more images are missing a real src value or still use a placeholder source.',
+        src: image.getAttribute('src') || undefined,
+        blockId,
+      });
+    } else if (isInvalidImageSource(image.getAttribute('src'))) {
+      const blockId = image.closest('section')?.getAttribute('data-block-id') || undefined;
+      issues.push({
+        type: 'error',
+        code: 'invalid-image-source',
+        message: 'One or more images use an invalid or malformed src value.',
+        src: image.getAttribute('src') || undefined,
         blockId,
       });
     } else if (hasLowOpacity(image)) {
@@ -517,6 +697,30 @@ export function validateGeneratedHtml(fullHtml: string): ValidationIssue[] {
           targetId: section.getAttribute('id') || undefined,
         });
       }
+    }
+
+    if (hasLightBackground(section)) {
+      const lightEls = findLightTextElements(section);
+      if (lightEls.length > 0) {
+        issues.push({
+          type: 'warning',
+          code: 'low-contrast-text',
+          message: `Section "${sectionId}" has light text on a light background — text may be unreadable.`,
+          blockId,
+          targetId: section.getAttribute('id') || undefined,
+        });
+      }
+    }
+
+    const hiddenTextElements = Array.from(section.querySelectorAll('[class], [style]')).filter(isVisuallyHiddenText);
+    if (hiddenTextElements.length > 0) {
+      issues.push({
+        type: 'warning',
+        code: 'invisible-text',
+        message: `Section "${sectionId}" contains text that may be invisible due to transparent color, hidden visibility, or very low opacity.`,
+        blockId,
+        targetId: section.getAttribute('id') || undefined,
+      });
     }
 
     // Alignment mismatch: heading and subtext using different alignment in the same wrapper
@@ -590,24 +794,62 @@ function ensureSmoothScroll(html: string): string {
   return html.replace(/<style>/i, '<style>\n    html { scroll-behavior: smooth; }');
 }
 
-function replacePlaceholderImages(html: string): string {
-  return html.replace(
-    /src="([^"]*(?:placeholder|example\.com|via\.placeholder|dummyimage|your-image|image-url)[^"]*)"/gi,
-    'src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=1200&q=80"',
-  );
+async function requestImageSourceRepair(html: string, blockId?: string): Promise<string> {
+  try {
+    const response = await fetch('/api/image-source', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html, blockId }),
+    });
+
+    if (!response.ok) {
+      return html;
+    }
+
+    const data = await response.json().catch(() => null);
+    return typeof data?.html === 'string' ? data.html : html;
+  } catch {
+    return html;
+  }
+}
+
+function fixInvisibleText(html: string): string {
+  return html
+    .replace(/\btext-transparent\b(?![^\"]*bg-clip-text)/g, 'text-white')
+    .replace(/\binvisible\b/g, '')
+    .replace(/\bhidden\b/g, '')
+    .replace(/\bopacity-0\b/g, 'opacity-100')
+    .replace(/\bopacity-10\b/g, 'opacity-100')
+    .replace(/\bopacity-20\b/g, 'opacity-100')
+    .replace(/\bopacity-30\b/g, 'opacity-100')
+    .replace(/\bopacity-40\b/g, 'opacity-100')
+    .replace(/style="([^"]*?)display\s*:\s*none;?\s*([^"]*)"/gi, 'style="$1$2"')
+    .replace(/style="([^"]*?)visibility\s*:\s*hidden;?\s*([^"]*)"/gi, 'style="$1$2"')
+    .replace(/style="([^"]*?)opacity\s*:\s*0(?:\.\d+)?;?\s*([^"]*)"/gi, 'style="$1opacity: 1;$2"')
+    .replace(/style="([^"]*?)opacity\s*:\s*0\.[1-3]\d?;?\s*([^"]*)"/gi, 'style="$1opacity: 1;$2"')
+    .replace(/\s{2,}/g, ' ');
 }
 
 // ─── Main auto-fix entry point ──────────────────────────────────
 
-export function autoFixIssues(blocks: Block[], issues: ValidationIssue[]): {
+export async function autoFixIssues(blocks: Block[], issues: ValidationIssue[]): Promise<{
   blocks: Block[];
   applied: string[];
-} {
+}> {
   let nextBlocks = blocks.map((block) => {
     const normalizedHtml = setRootSectionIdentifiers(block.html, block.id);
     return normalizedHtml === block.html ? { ...block } : { ...block, html: normalizedHtml };
   });
   const applied: string[] = [];
+  const imageRepairCache = new Map<string, Promise<string>>();
+
+  const getRepairedImageHtml = (blockId: string, currentHtml: string): Promise<string> => {
+    const cached = imageRepairCache.get(blockId);
+    if (cached) return cached;
+    const repairPromise = requestImageSourceRepair(currentHtml, blockId);
+    imageRepairCache.set(blockId, repairPromise);
+    return repairPromise;
+  };
 
   nextBlocks.forEach((block, index) => {
     if (block.html !== blocks[index]?.html) {
@@ -644,12 +886,21 @@ export function autoFixIssues(blocks: Block[], issues: ValidationIssue[]): {
     }
 
     if (issue.code === 'missing-image-source' && issue.blockId) {
-      nextBlocks = nextBlocks.map((block) =>
+      nextBlocks = await Promise.all(nextBlocks.map(async (block) =>
         block.id === issue.blockId
-          ? { ...block, html: replacePlaceholderImages(block.html) }
+          ? { ...block, html: await getRepairedImageHtml(block.id, block.html) }
           : block,
-      );
-      applied.push(`Replaced placeholder image sources in ${issue.blockId}.`);
+      ));
+      applied.push(`Requested new image sources from the API for ${issue.blockId}.`);
+    }
+
+    if (issue.code === 'invalid-image-source' && issue.blockId) {
+      nextBlocks = await Promise.all(nextBlocks.map(async (block) =>
+        block.id === issue.blockId
+          ? { ...block, html: await getRepairedImageHtml(block.id, block.html) }
+          : block,
+      ));
+      applied.push(`Requested replacement image sources from the API for ${issue.blockId}.`);
     }
 
     if (issue.code === 'broken-anchor' && issue.href) {
@@ -679,6 +930,15 @@ export function autoFixIssues(blocks: Block[], issues: ValidationIssue[]): {
           : block,
       );
       applied.push(`Fixed low-contrast dark text in ${issue.blockId} — switched to white text on colored background.`);
+    }
+
+    if (issue.code === 'invisible-text' && issue.blockId) {
+      nextBlocks = nextBlocks.map((block) =>
+        block.id === issue.blockId
+          ? { ...block, html: fixInvisibleText(block.html) }
+          : block,
+      );
+      applied.push(`Restored text visibility in ${issue.blockId}.`);
     }
 
     if (issue.code === 'low-opacity-image' && issue.blockId) {
@@ -717,6 +977,14 @@ export function autoFixIssues(blocks: Block[], issues: ValidationIssue[]): {
 
   nextBlocks = nextBlocks.map((block) => {
     if (!blockContainsNavigationChrome(block)) return block;
+
+    // Fix responsive navbar classes (hidden/md:flex, hamburger, mobile menu)
+    const responsive = fixNavbarResponsive(block.html);
+    if (responsive.changed) {
+      applied.push(`Fixed navbar responsive classes in ${block.id} (desktop/mobile visibility, hamburger toggle).`);
+      block = { ...block, html: responsive.html };
+    }
+
     const { html, changed } = normalizeNavbarAnchors(block.html, nextBlocks);
     if (changed) {
       applied.push(`Normalized navbar anchor targets in ${block.id}.`);

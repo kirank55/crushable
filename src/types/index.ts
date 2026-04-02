@@ -51,6 +51,8 @@ export interface ValidationIssue {
   message: string;
   /** Anchor href that failed to resolve. */
   href?: string;
+  /** Image source that failed validation. */
+  src?: string;
   /** The id value that a broken anchor was targeting. */
   targetId?: string;
   /** The data-block-id of the affected block. */

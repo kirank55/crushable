@@ -57,7 +57,6 @@ export default function ChatMessageList() {
 
   return (
     <div className="chat-messages">
-      {showResumeBanner && <ResumeBanner onResume={handleResume!} />}
       {!hasMessages ? (
         <EmptyState />
       ) : (
@@ -72,6 +71,8 @@ export default function ChatMessageList() {
           <GenerationProgress />
         </>
       )}
+      {showResumeBanner && <ResumeBanner onResume={handleResume!} />}
+
       <div ref={messagesEndRef} />
     </div>
   );

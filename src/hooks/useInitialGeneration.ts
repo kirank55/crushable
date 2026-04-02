@@ -249,7 +249,7 @@ export function useInitialGeneration() {
             // 2. Start planning phase
             setIsLoading(true);
             setPhase('planning');
-            setStatusText('Planning your page sectionsâ€¦');
+            setStatusText('Planning your page sections');
             setSectionProgress([
                 { id: PLANNING_SECTION_ID, label: 'Planning sectionsâ€¦', status: 'generating' },
             ]);
@@ -370,7 +370,7 @@ export function useInitialGeneration() {
                     };
                 });
 
-                const summary = `âœ“ Built ${validBlocks.length} section${validBlocks.length !== 1 ? 's' : ''} for your page.${validationNote} You can ask me to refine any section or add new ones.`;
+                const summary = `Built ${validBlocks.length} section${validBlocks.length !== 1 ? 's' : ''} for your page.${validationNote} You can ask me to refine any section or add new ones.`;
                 onMessagesChange([
                     ...currentMessages,
                     createAssistantMessage(summary, {

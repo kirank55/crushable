@@ -8,9 +8,9 @@ import { PLANNING_SECTION_ID } from '@/hooks/useChatGeneration';
 function StatusIcon({ status }: { status: SectionProgress['status'] }) {
   switch (status) {
     case 'generating': return <Loader2 size={12} className="spin-icon" />;
-    case 'done':       return <CheckCircle2 size={12} className="done-icon" />;
-    case 'error':      return <AlertCircle size={12} className="error-icon" />;
-    case 'pending':    return <span className="pending-dot" />;
+    case 'done': return <CheckCircle2 size={12} className="done-icon" />;
+    case 'error': return <AlertCircle size={12} className="error-icon" />;
+    case 'pending': return <span className="pending-dot" />;
   }
 }
 
@@ -74,13 +74,6 @@ export default function GenerationProgress() {
             </ul>
           )}
 
-          {/* Live status line */}
-          {isLoading && (
-            <div className="chat-header-status" style={{ marginTop: '6px' }}>
-              <Loader2 size={12} className="spin-icon" />
-              <span>{statusText}</span>
-            </div>
-          )}
         </div>
       </div>
     </div>

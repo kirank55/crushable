@@ -52,6 +52,8 @@ NAVBAR & STICKY HEADERS:
 - Navigation bars should use sticky or fixed positioning.
 - Hero sections that follow a sticky/fixed navbar MUST include pt-16 top padding to prevent content from being hidden behind the navbar.
 - Navbar links should use anchor hrefs (e.g. href="#features", href="#pricing") that match section IDs.
+- The logo/brand mark MUST link to "#hero" (the hero/top section ID) and serves as the "scroll to top" control.
+- Do NOT add a separate "Hero" or "Home" link in the navbar — it would be redundant with the logo. Only link to content sections (Features, Pricing, Testimonials, FAQ, Contact, etc.).
 
 HERO LAYOUT REVIEW:
 - Do NOT default hero sections to centered content. Choose left-aligned, centered, or split layouts based on what best balances the composition.
@@ -223,7 +225,10 @@ export function buildSectionGenerationPrompt({
         `Use id="${sectionId}" and data-block-id="${sectionId}" on the root <section>. Do not reuse ids from previous sections.`,
         sectionMap ? `Page section map:\n${sectionMap}` : '',
         isNavbarSection
-            ? 'If this is the navbar, include anchor links ONLY for the sections listed in the page section map. Do not invent links to sections that are not being generated.'
+            ? [
+                'If this is the navbar, include anchor links ONLY for the sections listed in the page section map. Do not invent links to sections that are not being generated.',
+                'IMPORTANT: The logo/brand mark already links to the top of the page (#hero or first section). Do NOT add a separate "Hero" or "Home" link in the nav links — it is redundant with the logo. Only include links to content sections such as Features, Pricing, Testimonials, FAQ, and Contact.',
+              ].join(' ')
             : 'Make sure this section matches its assigned role in the page section map so navbar links stay valid.',
     ]
         .filter(Boolean)

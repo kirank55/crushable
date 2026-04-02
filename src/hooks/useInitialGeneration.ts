@@ -175,7 +175,7 @@ async function fetchGeneration(
     const decoder = new TextDecoder();
     let text = '';
 
-    for (;;) {
+    for (; ;) {
         const { done, value } = await reader.read();
         if (done) break;
         text += decoder.decode(value, { stream: true });
@@ -233,6 +233,7 @@ export function useInitialGeneration() {
 
     // ── Full page generation ──────────────────────────────────────
 
+
     const generateFullPage = useCallback(
         async (userPrompt: string, skipAppend = false) => {
             abortRef.current = new AbortController();
@@ -248,9 +249,9 @@ export function useInitialGeneration() {
             // 2. Start planning phase
             setIsLoading(true);
             setPhase('planning');
-            setStatusText('Planning your page sections…');
+            setStatusText('Planning your page sectionsâ€¦');
             setSectionProgress([
-                { id: PLANNING_SECTION_ID, label: 'Planning sections…', status: 'generating' },
+                { id: PLANNING_SECTION_ID, label: 'Planning sectionsâ€¦', status: 'generating' },
             ]);
 
             try {
@@ -268,11 +269,30 @@ export function useInitialGeneration() {
                     blueprints.map((b) => ({ id: b.sectionId, label: b.title, status: 'pending' as const })),
                 );
                 setPhase('building');
-                setStatusText(`Building ${sections.length} sections…`);
+                setStatusText(`Building ${sections.length} sectionsâ€¦`);
 
                 // 5. Generate each section concurrently (bounded by semaphore)
                 const generatedBlocks: Array<Block | null> = new Array(blueprints.length).fill(null);
                 const semaphore = createSemaphore(MAX_CONCURRENT_SECTIONS);
+
+                // Progressive preview: show the preview as soon as 2 consecutive leading blocks are done.
+                const PREVIEW_THRESHOLD = 2;
+                let previewFlushedCount = 0;
+
+                const flushPreviewIfReady = () => {
+                    // Walk from index 0 and count how many leading slots are filled
+                    let readyCount = 0;
+                    while (readyCount < generatedBlocks.length && generatedBlocks[readyCount] !== null) {
+                        readyCount++;
+                    }
+                    // Only push a new preview when we cross the threshold and have more blocks than before
+                    if (readyCount >= PREVIEW_THRESHOLD && readyCount > previewFlushedCount) {
+                        previewFlushedCount = readyCount;
+                        const previewBlocks = generatedBlocks.slice(0, readyCount).filter((b): b is Block => b !== null);
+                        logger.info(`generateFullPage: preview flush â€” ${previewBlocks.length} blocks`);
+                        onReplaceAllBlocks(previewBlocks);
+                    }
+                };
 
                 await Promise.all(
                     blueprints.map((blueprint, index) =>
@@ -294,10 +314,12 @@ export function useInitialGeneration() {
                                 generatedBlocks[index] = createBlock(finalHtml, buildBlockLabel(blueprint.sectionId));
                                 updateSectionStatus(blueprint.sectionId, 'done');
                                 logger.info(`generateFullPage: "${blueprint.title}" done`);
+                                flushPreviewIfReady();
                             } catch (err) {
                                 if (signal.aborted) throw err;
                                 updateSectionStatus(blueprint.sectionId, 'error');
                                 logger.error(`generateFullPage: "${blueprint.title}" failed`, err);
+                                flushPreviewIfReady();
                             } finally {
                                 semaphore.release();
                             }
@@ -305,11 +327,11 @@ export function useInitialGeneration() {
                     ),
                 );
 
-                // 6. Commit results
+                // 6. Collect final results
                 const validBlocks = generatedBlocks.filter((b): b is Block => b !== null);
                 logger.info('generateFullPage: complete', { count: validBlocks.length });
 
-                // 7. Run validation + auto-fix silently
+                // 7. Run validation + auto-fix silently, then commit the final corrected version
                 let committedBlocks = validBlocks;
                 let validationNote = '';
                 try {
@@ -351,7 +373,7 @@ export function useInitialGeneration() {
                     };
                 });
 
-                const summary = `✓ Built ${validBlocks.length} section${validBlocks.length !== 1 ? 's' : ''} for your page.${validationNote} You can ask me to refine any section or add new ones.`;
+                const summary = `âœ“ Built ${validBlocks.length} section${validBlocks.length !== 1 ? 's' : ''} for your page.${validationNote} You can ask me to refine any section or add new ones.`;
                 onMessagesChange([
                     ...currentMessages,
                     createAssistantMessage(summary, {
@@ -361,7 +383,7 @@ export function useInitialGeneration() {
                 ]);
                 setPhase('done');
                 setStatusText('');
-                // Clear ephemeral progress — data is now persisted in the message
+                // Clear ephemeral progress â€” data is now persisted in the message
                 setSectionProgress([]);
             } catch (err) {
                 if ((err as Error)?.name === 'AbortError') {

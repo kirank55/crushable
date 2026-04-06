@@ -372,20 +372,51 @@ function normalizeNavbarAnchors(html: string, blocks: Block[]): { html: string; 
 
   const targetIds = new Set(targets.map((target) => target.id));
   const anchors = Array.from(navRoot.querySelectorAll('a[href^="#"]'));
+
+  // Detect the logo/brand anchor — may be icon-based, class-based, or the
+  // first bold, large-text anchor whose text does NOT match any navigation
+  // target (it's the site name, not a section link).
   const logoAnchor = anchors.find((anchor) => {
     const cls = anchor.getAttribute('class') || '';
-    return anchor.querySelector('img,svg,i[data-lucide]') || /flex-shrink-0|logo|brand/.test(cls);
+    // Icon / image logos
+    if (anchor.querySelector('img,svg,i[data-lucide]')) return true;
+    // Explicit class hints
+    if (/flex-shrink-0|logo|brand/.test(cls)) return true;
+    // Text-only brand link: bold + large text, and its text doesn't resolve to
+    // any known section ID (e.g. "Apex" vs "Features").
+    if (/\bfont-bold\b/.test(cls) && /\btext-(xl|2xl|3xl|4xl)\b/.test(cls)) {
+      const text = anchor.textContent?.replace(/\s+/g, ' ').trim() || '';
+      const resolved = resolveAnchorTarget(text, blocks);
+      // If the bold text doesn't match any content section, it's the brand name
+      if (!resolved || !targetIds.has(resolved)) return true;
+    }
+    return false;
   });
 
   const contentAnchors = anchors.filter((anchor) => anchor !== logoAnchor);
-  const usedTargetIds = new Set<string>();
-  let fallbackIndex = 0;
   let changed = false;
 
-  const getNextFallbackTarget = (): string | null => {
+  // Phase 1: Build an ideal mapping from anchor text → section ID using direct
+  // text matching. This gives us high-confidence assignments first.
+  const textMatchMap = new Map<Element, string>();
+  const textClaimedIds = new Set<string>();
+
+  contentAnchors.forEach((anchor) => {
+    const anchorText = anchor.textContent?.replace(/\s+/g, ' ').trim() || '';
+    const resolved = resolveAnchorTarget(anchorText, blocks);
+    if (resolved && targetIds.has(resolved) && !textClaimedIds.has(resolved)) {
+      textMatchMap.set(anchor, resolved);
+      textClaimedIds.add(resolved);
+    }
+  });
+
+  // Phase 2: For anchors without a text match, fall back to their current href
+  // target or assign the next available section in order.
+  let fallbackIndex = 0;
+  const getNextFallback = (): string | null => {
     while (fallbackIndex < targets.length) {
       const candidate = targets[fallbackIndex++];
-      if (!usedTargetIds.has(candidate.id)) {
+      if (!textClaimedIds.has(candidate.id)) {
         return candidate.id;
       }
     }
@@ -394,28 +425,55 @@ function normalizeNavbarAnchors(html: string, blocks: Block[]): { html: string; 
 
   contentAnchors.forEach((anchor) => {
     const href = anchor.getAttribute('href') || '';
-    const currentTarget = href.slice(1).trim();
-    const anchorText = anchor.textContent?.replace(/\s+/g, ' ').trim() || '';
 
-    let resolvedTarget = resolveAnchorTarget(anchorText, blocks);
+    // Use the text-matched target if available
+    let resolvedTarget = textMatchMap.get(anchor) || null;
 
-    if (!resolvedTarget && currentTarget && targetIds.has(currentTarget) && !usedTargetIds.has(currentTarget)) {
-      resolvedTarget = currentTarget;
+    if (!resolvedTarget) {
+      // Try keeping the current href if it points to a valid, unclaimed section
+      const currentTarget = href.slice(1).trim();
+      if (currentTarget && targetIds.has(currentTarget) && !textClaimedIds.has(currentTarget)) {
+        resolvedTarget = currentTarget;
+        textClaimedIds.add(resolvedTarget);
+      }
     }
 
-    if (!resolvedTarget || usedTargetIds.has(resolvedTarget)) {
-      resolvedTarget = getNextFallbackTarget();
+    if (!resolvedTarget) {
+      resolvedTarget = getNextFallback();
+      if (resolvedTarget) textClaimedIds.add(resolvedTarget);
     }
 
     if (!resolvedTarget) return;
 
-    usedTargetIds.add(resolvedTarget);
     const desiredHref = `#${resolvedTarget}`;
     if (href !== desiredHref) {
       anchor.setAttribute('href', desiredHref);
       changed = true;
     }
   });
+
+  // Phase 3: Sync mobile menu anchors to match corrected desktop nav anchors.
+  // The mobile menu (#mobile-menu) is typically a sibling of <nav>, so its
+  // anchors wouldn't have been processed above.
+  const mobileMenu = section.querySelector('#mobile-menu');
+  if (mobileMenu) {
+    // Build a map from anchor text → corrected href from the desktop nav
+    const textToHref = new Map<string, string>();
+    contentAnchors.forEach((anchor) => {
+      const text = normalizeAnchorToken(anchor.textContent?.replace(/\s+/g, ' ').trim() || '');
+      const href = anchor.getAttribute('href') || '';
+      if (text && href) textToHref.set(text, href);
+    });
+
+    Array.from(mobileMenu.querySelectorAll('a[href^="#"]')).forEach((mobileAnchor) => {
+      const text = normalizeAnchorToken(mobileAnchor.textContent?.replace(/\s+/g, ' ').trim() || '');
+      const correctHref = textToHref.get(text);
+      if (correctHref && mobileAnchor.getAttribute('href') !== correctHref) {
+        mobileAnchor.setAttribute('href', correctHref);
+        changed = true;
+      }
+    });
+  }
 
   return { html: changed ? section.outerHTML : html, changed };
 }

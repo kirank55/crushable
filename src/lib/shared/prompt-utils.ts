@@ -35,14 +35,65 @@ export function parseJsonArrayResponse<T>(response: string): T[] | null {
  * Throws if the expected ---SUMMARY--- / ---HTML--- delimiters are absent —
  * the LLM did not follow the output format and the caller must handle the error.
  */
+/**
+ * Repair truncated HTML by closing any unclosed tags.
+ * This handles cases where the LLM response was cut off mid-HTML.
+ */
+function repairTruncatedHtml(html: string): string {
+    // Remove any trailing incomplete tag (e.g., `<div class="foo` without closing `>`)
+    const lastOpenBracket = html.lastIndexOf('<');
+    const lastCloseBracket = html.lastIndexOf('>');
+    if (lastOpenBracket > lastCloseBracket) {
+        html = html.slice(0, lastOpenBracket);
+    }
+
+    // Track open tags that need closing
+    const openTags: string[] = [];
+    const tagRegex = /<\/?([a-zA-Z][a-zA-Z0-9]*)\b[^>]*\/?>/g;
+    const selfClosingTags = new Set([
+        'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
+        'link', 'meta', 'param', 'source', 'track', 'wbr',
+    ]);
+
+    let match;
+    while ((match = tagRegex.exec(html)) !== null) {
+        const [fullMatch, tagName] = match;
+        const lower = tagName.toLowerCase();
+        if (selfClosingTags.has(lower) || fullMatch.endsWith('/>')) continue;
+
+        if (fullMatch.startsWith('</')) {
+            // Closing tag — pop matching open tag
+            const idx = openTags.lastIndexOf(lower);
+            if (idx !== -1) openTags.splice(idx, 1);
+        } else {
+            openTags.push(lower);
+        }
+    }
+
+    // Close remaining open tags in reverse order
+    if (openTags.length > 0) {
+        html += openTags.reverse().map(tag => `</${tag}>`).join('');
+    }
+
+    return html;
+}
+
 export function parseResponse(response: string): { summary: string; html: string } {
     const summaryMatch = response.match(/---SUMMARY---\s*([\s\S]*?)\s*---HTML---/);
     const htmlMatch = response.match(/---HTML---\s*([\s\S]*)/);
 
     if (summaryMatch && htmlMatch) {
+        let html = htmlMatch[1].trim();
+
+        // Strip markdown code fences if present
+        html = html.replace(/^```html?\s*/i, '').replace(/\s*```$/, '');
+
+        // Repair any truncated/unclosed HTML tags
+        html = repairTruncatedHtml(html);
+
         return {
             summary: summaryMatch[1].trim(),
-            html: htmlMatch[1].trim(),
+            html,
         };
     }
 

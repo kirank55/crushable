@@ -75,6 +75,7 @@ async function callOpenRouter(
                 { role: 'user', content: prompt },
             ],
             stream: true,
+            max_tokens: 16384,
         }),
     });
 

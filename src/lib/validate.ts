@@ -453,6 +453,19 @@ function normalizeNavbarAnchors(html: string, blocks: Block[]): { html: string; 
   const contentAnchors = anchors.filter((anchor) => anchor !== logoAnchor);
   let changed = false;
 
+  // Phase 0: Remove anchors that point to the footer section — footer links
+  // in the navbar are redundant since footers are always at the bottom.
+  const FOOTER_TOKENS = /\b(footer|foot)\b/i;
+  contentAnchors.slice().forEach((anchor) => {
+    const href = (anchor.getAttribute('href') || '').slice(1).toLowerCase();
+    const text = (anchor.textContent || '').trim().toLowerCase();
+    if (FOOTER_TOKENS.test(href) || FOOTER_TOKENS.test(text)) {
+      anchor.remove();
+      contentAnchors.splice(contentAnchors.indexOf(anchor), 1);
+      changed = true;
+    }
+  });
+
   // Phase 1: Build an ideal mapping from anchor text → section ID using direct
   // text matching. This gives us high-confidence assignments first.
   const textMatchMap = new Map<Element, string>();
@@ -523,7 +536,15 @@ function normalizeNavbarAnchors(html: string, blocks: Block[]): { html: string; 
     });
 
     Array.from(mobileMenu.querySelectorAll('a[href^="#"]')).forEach((mobileAnchor) => {
-      const text = normalizeAnchorToken(mobileAnchor.textContent?.replace(/\s+/g, ' ').trim() || '');
+      const rawText = (mobileAnchor.textContent || '').trim();
+      const href = (mobileAnchor.getAttribute('href') || '').slice(1);
+      // Remove footer links from mobile menu too
+      if (FOOTER_TOKENS.test(href) || FOOTER_TOKENS.test(rawText)) {
+        mobileAnchor.remove();
+        changed = true;
+        return;
+      }
+      const text = normalizeAnchorToken(rawText);
       const correctHref = textToHref.get(text);
       if (correctHref && mobileAnchor.getAttribute('href') !== correctHref) {
         mobileAnchor.setAttribute('href', correctHref);
@@ -550,12 +571,29 @@ function fixNavbarResponsive(html: string): { html: string; changed: boolean } {
 
   // 1. Fix desktop links container: should be "hidden md:flex"
   //    Look for a direct child div of nav that contains anchor links (not the mobile menu)
+  //    Skip wrapper divs that also contain the hamburger button (they wrap everything).
   const desktopLinksDiv = Array.from(nav.querySelectorAll(':scope > div')).find((div) => {
     const id = div.getAttribute('id') || '';
     if (id === 'mobile-menu') return false;
+    // Skip wrapper divs that contain buttons (hamburger) — they wrap the entire nav
+    if (div.querySelector('button')) return false;
     const anchors = div.querySelectorAll('a[href^="#"]');
     return anchors.length >= 2;
-  });
+  })
+  // Fallback: look for nested divs with md:flex that contain links (common LLM pattern)
+  || nav.querySelector(':scope > div > div[class*="md:flex"]:not(#mobile-menu)')
+  || (() => {
+    // Last resort: find the innermost div that directly contains 2+ anchor links
+    // but does NOT contain the hamburger button
+    const candidates = Array.from(nav.querySelectorAll('div:not(#mobile-menu)'));
+    return candidates.find((div) => {
+      if (div.querySelector('button')) return false;
+      const directAnchors = Array.from(div.children).filter(
+        (ch) => ch.tagName === 'A' && ch.getAttribute('href')?.startsWith('#'),
+      );
+      return directAnchors.length >= 2;
+    }) || null;
+  })();
 
   if (desktopLinksDiv) {
     const cls = desktopLinksDiv.getAttribute('class') || '';
@@ -985,6 +1023,99 @@ function fixInvisibleText(html: string): string {
     .replace(/\s{2,}/g, ' ');
 }
 
+// ─── Broken image URL verification ──────────────────────────────
+
+/** HEAD-check a URL. Returns true if reachable (2xx/3xx), false otherwise. */
+async function isImageReachable(url: string): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(url, { method: 'HEAD', signal: controller.signal, redirect: 'follow' });
+    clearTimeout(timeoutId);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Verify all image URLs in blocks and replace any that return 404/error.
+ * Uses HEAD requests with a 5 s timeout per URL.
+ */
+async function verifyAndRepairBrokenImages(
+  blocks: Block[],
+): Promise<{ blocks: Block[]; applied: string[] }> {
+  const applied: string[] = [];
+
+  // Collect all unique image URLs across all blocks
+  const urlToBlocks = new Map<string, Set<string>>();
+  const urlToAlt = new Map<string, string>();
+
+  for (const block of blocks) {
+    const imgRegex = /<img\b[^>]*\ssrc="([^"]+)"[^>]*>/gi;
+    let m;
+    while ((m = imgRegex.exec(block.html)) !== null) {
+      const src = m[1].trim();
+      if (!src || !/^https?:\/\//.test(src)) continue;
+      if (!urlToBlocks.has(src)) urlToBlocks.set(src, new Set());
+      urlToBlocks.get(src)!.add(block.id);
+
+      // Also grab the alt text for this image
+      const altMatch = m[0].match(/\salt="([^"]*)"/i);
+      if (altMatch && !urlToAlt.has(src)) {
+        urlToAlt.set(src, altMatch[1]);
+      }
+    }
+  }
+
+  if (urlToBlocks.size === 0) return { blocks, applied };
+
+  // HEAD-check all URLs in parallel
+  const urls = Array.from(urlToBlocks.keys());
+  const results = await Promise.all(urls.map(async (url) => ({ url, ok: await isImageReachable(url) })));
+  const brokenUrls = results.filter(r => !r.ok).map(r => r.url);
+
+  if (brokenUrls.length === 0) return { blocks, applied };
+
+  // Build replacement map: broken URL → content-aware alternative
+  const replacements = new Map<string, string>();
+
+  brokenUrls.forEach((url) => {
+    const alt = urlToAlt.get(url) || '';
+    const wMatch = url.match(/[&?]w=(\d+)/);
+    const hMatch = url.match(/[&?]h=(\d+)/);
+    const w = wMatch ? wMatch[1] : '800';
+    const h = hMatch ? hMatch[1] : '600';
+
+    // Extract keywords from alt text for a content-relevant replacement
+    const keywords = alt
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]+/g, ' ')
+      .split(/\s+/)
+      .filter((t) => t.length >= 3 && !['image', 'photo', 'picture', 'icon', 'the', 'and', 'for'].includes(t))
+      .slice(0, 3);
+    const query = keywords.length > 0 ? keywords.join(',') : 'technology,product';
+    const lockSeed = encodeURIComponent(query.replace(/\s+/g, '-'));
+    replacements.set(url, `https://loremflickr.com/${w}/${h}/${encodeURIComponent(query)}?lock=${lockSeed}`);
+  });
+
+  // Apply replacements across all blocks
+  let nextBlocks = blocks.map(block => {
+    let html = block.html;
+    let changed = false;
+    for (const [broken, replacement] of replacements) {
+      if (html.includes(broken)) {
+        html = html.replaceAll(broken, replacement);
+        changed = true;
+      }
+    }
+    return changed ? { ...block, html } : block;
+  });
+
+  applied.push(`Replaced ${brokenUrls.length} broken image URL${brokenUrls.length !== 1 ? 's' : ''} with working alternatives.`);
+  return { blocks: nextBlocks, applied };
+}
+
 // ─── Main auto-fix entry point ──────────────────────────────────
 
 export async function autoFixIssues(blocks: Block[], issues: ValidationIssue[]): Promise<{
@@ -1165,6 +1296,17 @@ export async function autoFixIssues(blocks: Block[], issues: ValidationIssue[]):
     }
     return block;
   });
+
+  // Verify image URLs are reachable and replace broken ones
+  try {
+    const imageResult = await verifyAndRepairBrokenImages(nextBlocks);
+    if (imageResult.applied.length > 0) {
+      nextBlocks = imageResult.blocks;
+      applied.push(...imageResult.applied);
+    }
+  } catch (err) {
+    // Non-fatal: skip image verification if it fails (e.g. network issues)
+  }
 
   return { blocks: nextBlocks, applied };
 }

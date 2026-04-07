@@ -37,6 +37,13 @@ RULES:
 - Do NOT use emojis anywhere in the generated HTML. Use Lucide icons (<i data-lucide="icon-name"></i>) or plain text instead.
 - ALWAYS ensure text has sufficient contrast against its background. Light text on dark backgrounds, dark text on light backgrounds.
 - When using background images or gradients, add a semi-transparent overlay or text-shadow to guarantee readability.
+
+TEXT-ON-BACKGROUND CONTRAST (CRITICAL — review every element):
+- Dark/colored section backgrounds (bg-gray-900, bg-blue-900, bg-gradient-to-br from-gray-900 …): ALL text inside MUST use text-white or text-gray-300. NEVER use text-gray-900 or text-gray-700 here.
+- Light section backgrounds (bg-white, bg-gray-50, bg-gray-100): ALL text inside MUST use text-gray-900, text-gray-700, or text-gray-600. NEVER use text-white here (unless the element has its own colored background).
+- Colored buttons/badges (bg-blue-600, bg-indigo-600, bg-gradient-to-r from-blue-600 …): ALWAYS use text-white. NEVER use text-gray-900 on a colored button.
+- Overlay text on images: Add a dark overlay (bg-black/60 or bg-gradient-to-t from-black/80) AND use text-white.
+- Before returning HTML, mentally scan EVERY element that has both a bg-* and a text-* class — verify they are not the same brightness.
 ${designInstruction}${contextInstruction}
 RESPONSIVENESS (MANDATORY):
 - ALL generated sections MUST be fully responsive.
@@ -128,7 +135,9 @@ In the SUMMARY, describe what you created.
 FINAL SELF-REVIEW BEFORE RETURNING HTML:
 - Check the section as a composed design, not just a list of elements.
 - Fix any obvious layout mistakes such as awkward whitespace, broken hierarchy, low-contrast text, cramped cards, or unbalanced columns.
-- For hero sections especially, review spacing, height, alignment, and media placement one more time before finalizing.`;
+- For hero sections especially, review spacing, height, alignment, and media placement one more time before finalizing.
+- Verify every button, badge, and card with a colored background (bg-blue-600, bg-indigo-600, bg-gradient-to-r …) uses text-white, NOT text-gray-900.
+- Verify every dark section (bg-gray-900, bg-slate-900) has NO text-gray-900 or text-gray-700 inside it — only text-white, text-gray-300, or text-gray-400.`;
 }
 
 export function buildNewPrompt(userRequest: string): string {

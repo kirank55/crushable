@@ -46,7 +46,7 @@ export function useAutoStartGeneration({
       id: uuidv4(),
       role: 'assistant',
       content:
-        'Project created!\n\nGenerating your page…',
+        'Project created!\nPlease avoid refreshing while the page is being generated, because the data is stored in your browser.\nGenerating your page…',
       timestamp: Date.now(),
     };
 

@@ -56,9 +56,14 @@ function isVisuallyHiddenText(element: Element): boolean {
   if (!hasTextContent(element)) return false;
   const className = element.getAttribute('class') || '';
   const style = element.getAttribute('style') || '';
+  const id = element.getAttribute('id') || '';
   const hasGradientClip = /bg-clip-text/.test(className);
   const transparentWithoutClip = /\btext-transparent\b/.test(className) && !hasGradientClip;
-  const hiddenClass = /\b(?:hidden|invisible)\b/.test(className);
+  // Skip responsive toggle patterns (e.g. "hidden md:flex") and mobile menu containers
+  const isResponsiveToggle = /(?<![:\w])hidden(?![:\w])/.test(className)
+    && /\b(sm|md|lg|xl|2xl):(flex|block|grid|inline|table|inline-flex|inline-block)\b/.test(className);
+  const isMobileMenu = /mobile.?menu/i.test(id);
+  const hiddenClass = !isResponsiveToggle && !isMobileMenu && /\b(?:hidden|invisible)\b/.test(className);
   const lowOpacityClass = /\bopacity-([0-9]|[1-3][0-9]|40)\b/.test(className);
   const hiddenStyle = /display\s*:\s*none|visibility\s*:\s*hidden/i.test(style);
   const lowOpacityStyle = (() => {
@@ -112,6 +117,21 @@ function findLightTextElements(section: Element): Element[] {
   return Array.from(section.querySelectorAll('[class]')).filter((el) => {
     const cls = el.getAttribute('class') || '';
     return hasTextContent(el) && lightTextPattern.test(cls);
+  });
+}
+
+/** Tailwind color names (excluding gray-scale which is handled separately). */
+const COLORED_BG_PATTERN = /\b(?:bg-(?:blue|indigo|purple|violet|fuchsia|pink|rose|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky)-(?:[4-9]00)\b|from-(?:blue|indigo|purple|violet|fuchsia|pink|rose|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky)-(?:[4-9]00)\b)/;
+
+/**
+ * Find elements that have a colored background (buttons, badges, etc.) with dark text.
+ * This catches e.g. bg-blue-600 text-gray-900 or bg-gradient from-indigo-600 text-gray-900.
+ */
+function findColoredBgWithDarkText(section: Element): Element[] {
+  const darkTextPattern = /\btext-(?:gray|slate|zinc|neutral|stone)-(?:[6-9]00)\b|\btext-black\b/;
+  return Array.from(section.querySelectorAll('[class]')).filter((el) => {
+    const cls = el.getAttribute('class') || '';
+    return COLORED_BG_PATTERN.test(cls) && darkTextPattern.test(cls);
   });
 }
 
@@ -357,16 +377,17 @@ function improveSocialProofLayout(html: string): string {
 // ─── Low-contrast text fix ──────────────────────────────────────
 
 function fixLowContrastText(html: string): string {
-  // Replace dark text utilities with white equivalents when on colored backgrounds
+  // Replace dark text utilities with white equivalents when on colored backgrounds.
+  // Use negative lookbehind to skip responsive-prefixed variants (hover:text-gray-900 etc.)
   return html
-    .replace(/\btext-gray-900\b/g, 'text-white')
-    .replace(/\btext-gray-800\b/g, 'text-white')
-    .replace(/\btext-gray-700\b/g, 'text-white')
-    .replace(/\btext-gray-600\b/g, 'text-white\/80')
-    .replace(/\btext-slate-900\b/g, 'text-white')
-    .replace(/\btext-slate-800\b/g, 'text-white')
-    .replace(/\btext-slate-700\b/g, 'text-white')
-    .replace(/\btext-slate-600\b/g, 'text-white\/80');
+    .replace(/(?<![:\w])text-gray-900\b/g, 'text-white')
+    .replace(/(?<![:\w])text-gray-800\b/g, 'text-white')
+    .replace(/(?<![:\w])text-gray-700\b/g, 'text-white')
+    .replace(/(?<![:\w])text-gray-600\b/g, 'text-white\/80')
+    .replace(/(?<![:\w])text-slate-900\b/g, 'text-white')
+    .replace(/(?<![:\w])text-slate-800\b/g, 'text-white')
+    .replace(/(?<![:\w])text-slate-700\b/g, 'text-white')
+    .replace(/(?<![:\w])text-slate-600\b/g, 'text-white\/80');
 }
 
 function fixLightTextOnLightBg(html: string): string {
@@ -399,6 +420,26 @@ function fixLowOpacityImages(html: string): string {
 }
 
 // ─── Alignment mismatch fix ──────────────────────────────────────
+
+function fixColoredBgDarkText(html: string): string {
+  // Per-element fix: for elements with colored backgrounds, swap dark text to white
+  return html.replace(
+    /class="([^"]*)"/g,
+    (match, classValue: string) => {
+      if (!COLORED_BG_PATTERN.test(classValue)) return match;
+      let fixed = classValue
+        .replace(/(?<![:\w])text-gray-900\b/g, 'text-white')
+        .replace(/(?<![:\w])text-gray-800\b/g, 'text-white')
+        .replace(/(?<![:\w])text-gray-700\b/g, 'text-white')
+        .replace(/(?<![:\w])text-gray-600\b/g, 'text-white\/80')
+        .replace(/(?<![:\w])text-slate-900\b/g, 'text-white')
+        .replace(/(?<![:\w])text-slate-800\b/g, 'text-white')
+        .replace(/(?<![:\w])text-slate-700\b/g, 'text-white')
+        .replace(/(?<![:\w])text-slate-600\b/g, 'text-white\/80');
+      return fixed !== classValue ? `class="${fixed}"` : match;
+    },
+  );
+}
 
 function fixAlignmentMismatch(html: string): string {
   // Remove md:text-left from wrappers that also have text-center â€” enforce consistent centering
@@ -879,6 +920,18 @@ export function validateGeneratedHtml(fullHtml: string): ValidationIssue[] {
       });
     }
 
+    // Elements with colored backgrounds (buttons, badges) and dark text
+    const coloredBgIssues = findColoredBgWithDarkText(section);
+    if (coloredBgIssues.length > 0) {
+      issues.push({
+        type: 'warning',
+        code: 'colored-bg-dark-text',
+        message: `Section "${sectionId}" has elements with colored backgrounds and dark text — text may be unreadable.`,
+        blockId,
+        targetId: section.getAttribute('id') || undefined,
+      });
+    }
+
     // Inner elements with light background + light text (e.g. bg-white cards with text-white)
     const innerContrastIssues = findInnerLightBgWithLightText(section);
     if (innerContrastIssues.length > 0) {
@@ -1009,6 +1062,8 @@ function fixInvisibleText(html: string): string {
       if (/\b(sm|md|lg|xl|2xl):(flex|block|grid|inline|table)\b/.test(surrounding)) return match;
       // Preserve "hidden" on elements that look like mobile-menu containers
       if (/id="mobile-menu"/.test(surrounding)) return match;
+      // Preserve "hidden" inside JavaScript expressions (e.g. toggle('hidden'))
+      if (/classList|toggle|querySelector|getElementById/.test(surrounding)) return match;
       return '';
     })
     .replace(/(?<![:\w])opacity-0(?![:\w\d])/g, 'opacity-100')
@@ -1216,6 +1271,15 @@ export async function autoFixIssues(blocks: Block[], issues: ValidationIssue[]):
           : block,
       );
       applied.push(`Fixed low-contrast dark text in ${issue.blockId} — switched to white text on colored background.`);
+    }
+
+    if (issue.code === 'colored-bg-dark-text' && issue.blockId) {
+      nextBlocks = nextBlocks.map((block) =>
+        block.id === issue.blockId
+          ? { ...block, html: fixColoredBgDarkText(block.html) }
+          : block,
+      );
+      applied.push(`Fixed dark text on colored background elements in ${issue.blockId}.`);
     }
 
     if (issue.code === 'light-text-on-light-bg' && issue.blockId) {

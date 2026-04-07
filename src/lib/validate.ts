@@ -104,6 +104,36 @@ function findLightTextElements(section: Element): Element[] {
   });
 }
 
+/**
+ * Find inner elements that have their own light background with light text children.
+ * This catches cases like cards with bg-white inside a dark-background section.
+ */
+function findInnerLightBgWithLightText(section: Element): Element[] {
+  const lightBgPattern = /\bbg-(white|gray-(?:50|100|200|300)|slate-(?:50|100|200|300)|zinc-(?:50|100|200|300))\b/;
+  const lightTextPattern = /\btext-(?:white|gray-(?:50|100|200|300)|slate-(?:50|100|200|300)|zinc-(?:50|100|200|300))\b/;
+  const results: Element[] = [];
+
+  // Find inner containers (not the section itself) that have light backgrounds
+  Array.from(section.querySelectorAll('[class]')).forEach((el) => {
+    if (el === section) return;
+    const cls = el.getAttribute('class') || '';
+    if (!lightBgPattern.test(cls)) return;
+
+    // Check if this element or its children have light text
+    const hasOwnLightText = lightTextPattern.test(cls) && hasTextContent(el);
+    const childLightText = Array.from(el.querySelectorAll('[class]')).some((child) => {
+      const childCls = child.getAttribute('class') || '';
+      return hasTextContent(child) && lightTextPattern.test(childCls);
+    });
+
+    if (hasOwnLightText || childLightText) {
+      results.push(el);
+    }
+  });
+
+  return results;
+}
+
 // Detect heading/subtext alignment mismatch: e.g. h2 text-left but sibling p text-center
 function hasAlignmentMismatch(section: Element): boolean {
   const wrapper = Array.from(section.querySelectorAll('div')).find((div) => {
@@ -781,6 +811,18 @@ export function validateGeneratedHtml(fullHtml: string): ValidationIssue[] {
       });
     }
 
+    // Inner elements with light background + light text (e.g. bg-white cards with text-white)
+    const innerContrastIssues = findInnerLightBgWithLightText(section);
+    if (innerContrastIssues.length > 0) {
+      issues.push({
+        type: 'warning',
+        code: 'inner-light-on-light',
+        message: `Section "${sectionId}" has inner elements with light backgrounds and light text — text may be unreadable.`,
+        blockId,
+        targetId: section.getAttribute('id') || undefined,
+      });
+    }
+
     // Alignment mismatch: heading and subtext using different alignment in the same wrapper
     if (hasAlignmentMismatch(section)) {
       issues.push({
@@ -869,6 +911,20 @@ async function requestImageSourceRepair(html: string, blockId?: string): Promise
   } catch {
     return html;
   }
+}
+
+function fixInnerLightOnLight(html: string): string {
+  // For elements that have bg-white (or similar light bg) AND text-white, swap text to dark
+  return html.replace(
+    /class="([^"]*\bbg-(?:white|gray-(?:50|100|200|300)|slate-(?:50|100|200|300))\b[^"]*)"/g,
+    (match, classValue: string) => {
+      let fixed = classValue
+        .replace(/\btext-white\b/g, 'text-gray-900')
+        .replace(/\btext-gray-(?:50|100|200|300)\b/g, 'text-gray-900')
+        .replace(/\btext-slate-(?:50|100|200|300)\b/g, 'text-slate-900');
+      return fixed !== classValue ? `class="${fixed}"` : match;
+    },
+  );
 }
 
 function fixInvisibleText(html: string): string {
@@ -997,6 +1053,15 @@ export async function autoFixIssues(blocks: Block[], issues: ValidationIssue[]):
           : block,
       );
       applied.push(`Restored text visibility in ${issue.blockId}.`);
+    }
+
+    if (issue.code === 'inner-light-on-light' && issue.blockId) {
+      nextBlocks = nextBlocks.map((block) =>
+        block.id === issue.blockId
+          ? { ...block, html: fixInnerLightOnLight(block.html) }
+          : block,
+      );
+      applied.push(`Fixed light-on-light contrast inside inner elements in ${issue.blockId}.`);
     }
 
     if (issue.code === 'low-opacity-image' && issue.blockId) {

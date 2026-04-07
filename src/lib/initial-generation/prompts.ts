@@ -181,7 +181,7 @@ Rules:
 - "brandName" MUST be a single capitalized word (no spaces, no punctuation).
 - The FIRST section MUST always be a Navigation/Navbar section.
 - The LAST section MUST always be a Footer section.
-- Choose 4-8 total sections (including nav and footer) that make sense for the request.
+- Choose 7-10 total sections (including nav and footer) that make sense for the request.
 - Only include sections that genuinely serve the described product/page — do NOT generate random filler sections.
 - Common relevant sections: Hero, Features, Pricing, Testimonials, FAQ, CTA, How It Works, About, Contact.
 

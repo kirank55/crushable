@@ -69,14 +69,20 @@ function isVisuallyHiddenText(element: Element): boolean {
   return transparentWithoutClip || hiddenClass || lowOpacityClass || hiddenStyle || lowOpacityStyle;
 }
 
-// Check if a section has a strongly-colored background (not white/gray/transparent)
+/** Light Tailwind shades that should NOT be treated as "dark / colored". */
+const LIGHT_SHADE_PATTERN = 'white|gray-(?:50|1(?:00)?|2(?:00)?|3(?:00)?)|slate-(?:50|1(?:00)?|2(?:00)?|3(?:00)?)|zinc-(?:50|1(?:00)?|2(?:00)?|3(?:00)?)|neutral-(?:50|1(?:00)?|2(?:00)?|3(?:00)?)|stone-(?:50|1(?:00)?|2(?:00)?|3(?:00)?)';
+
+// Check if a section has a strongly-colored background (not white/light gray/transparent)
 function hasDarkOrColoredBackground(section: Element): boolean {
   const className = section.getAttribute('class') || '';
   const style = section.getAttribute('style') || '';
   // Detects Tailwind bg-{color}-{shade} where shade >= 400, gradients, and inline bg with non-white colors
-  return /\bbg-(?!white|gray-[0-2]|slate-[0-2]|zinc-[0-2]|neutral-[0-2]|stone-[0-2]|transparent|black\/0)[a-z]/.test(className)
-    || /from-(?!white|gray-[0-2]|slate-[0-2])/.test(className)
-    || /to-(?!white|gray-[0-2]|slate-[0-2])/.test(className)
+  const bgRe = new RegExp(`\\bbg-(?!${LIGHT_SHADE_PATTERN}|transparent|black\\/0)[a-z]`);
+  const fromRe = new RegExp(`from-(?!${LIGHT_SHADE_PATTERN})`);
+  const toRe = new RegExp(`to-(?!${LIGHT_SHADE_PATTERN})`);
+  return bgRe.test(className)
+    || fromRe.test(className)
+    || toRe.test(className)
     || /background(?:-color)?\s*:\s*(?!white|#fff|rgba\(255,255,255)/i.test(style);
 }
 
@@ -92,7 +98,12 @@ function findDarkTextElements(section: Element): Element[] {
 function hasLightBackground(section: Element): boolean {
   const className = section.getAttribute('class') || '';
   const style = section.getAttribute('style') || '';
-  return /\bbg-(white|gray-(?:50|100|200|300)|slate-(?:50|100|200|300)|zinc-(?:50|100|200|300)|neutral-(?:50|100|200|300)|stone-(?:50|100|200|300))\b/.test(className)
+  const lightBg = /\bbg-(white|gray-(?:50|100|200|300)|slate-(?:50|100|200|300)|zinc-(?:50|100|200|300)|neutral-(?:50|100|200|300)|stone-(?:50|100|200|300))\b/;
+  const lightFrom = /\bfrom-(white|gray-(?:50|100|200|300)|slate-(?:50|100|200|300)|blue-(?:50|100))\b/;
+  const lightTo = /\bto-(white|gray-(?:50|100|200|300)|slate-(?:50|100|200|300)|blue-(?:50|100))\b/;
+  return lightBg.test(className)
+    || lightFrom.test(className)
+    || lightTo.test(className)
     || /background(?:-color)?\s*:\s*(white|#fff|#ffffff|rgb\(255,\s*255,\s*255\)|rgba\(255,\s*255,\s*255)/i.test(style);
 }
 
@@ -356,6 +367,22 @@ function fixLowContrastText(html: string): string {
     .replace(/\btext-slate-800\b/g, 'text-white')
     .replace(/\btext-slate-700\b/g, 'text-white')
     .replace(/\btext-slate-600\b/g, 'text-white\/80');
+}
+
+function fixLightTextOnLightBg(html: string): string {
+  // Replace light text utilities with dark equivalents when on light backgrounds
+  return html
+    .replace(/\btext-white\b/g, 'text-gray-900')
+    .replace(/\btext-white\/80\b/g, 'text-gray-600')
+    .replace(/\btext-white\/60\b/g, 'text-gray-500')
+    .replace(/\btext-gray-50\b/g, 'text-gray-900')
+    .replace(/\btext-gray-100\b/g, 'text-gray-800')
+    .replace(/\btext-gray-200\b/g, 'text-gray-700')
+    .replace(/\btext-gray-300\b/g, 'text-gray-600')
+    .replace(/\btext-slate-50\b/g, 'text-slate-900')
+    .replace(/\btext-slate-100\b/g, 'text-slate-800')
+    .replace(/\btext-slate-200\b/g, 'text-slate-700')
+    .replace(/\btext-slate-300\b/g, 'text-slate-600');
 }
 
 // ─── Low-opacity image fix ──────────────────────────────────────
@@ -774,12 +801,15 @@ export function validateGeneratedHtml(fullHtml: string): ValidationIssue[] {
     }
 
     // Low-contrast text: dark text inside a strongly-colored background section
-    if (hasDarkOrColoredBackground(section)) {
+    const isDark = hasDarkOrColoredBackground(section);
+    const isLight = hasLightBackground(section);
+
+    if (isDark && !isLight) {
       const darkEls = findDarkTextElements(section);
       if (darkEls.length > 0) {
         issues.push({
           type: 'warning',
-          code: 'low-contrast-text',
+          code: 'dark-text-on-dark-bg',
           message: `Section "${sectionId}" has dark text utilities (e.g. text-gray-900) on a colored background — text may be unreadable.`,
           blockId,
           targetId: section.getAttribute('id') || undefined,
@@ -787,12 +817,12 @@ export function validateGeneratedHtml(fullHtml: string): ValidationIssue[] {
       }
     }
 
-    if (hasLightBackground(section)) {
+    if (isLight) {
       const lightEls = findLightTextElements(section);
       if (lightEls.length > 0) {
         issues.push({
           type: 'warning',
-          code: 'low-contrast-text',
+          code: 'light-text-on-light-bg',
           message: `Section "${sectionId}" has light text on a light background — text may be unreadable.`,
           blockId,
           targetId: section.getAttribute('id') || undefined,
@@ -930,13 +960,24 @@ function fixInnerLightOnLight(html: string): string {
 function fixInvisibleText(html: string): string {
   return html
     .replace(/\btext-transparent\b(?![^\"]*bg-clip-text)/g, 'text-white')
-    .replace(/\binvisible\b/g, '')
-    .replace(/\bhidden\b/g, '')
-    .replace(/\bopacity-0\b/g, 'opacity-100')
-    .replace(/\bopacity-10\b/g, 'opacity-100')
-    .replace(/\bopacity-20\b/g, 'opacity-100')
-    .replace(/\bopacity-30\b/g, 'opacity-100')
-    .replace(/\bopacity-40\b/g, 'opacity-100')
+    // Only strip standalone "invisible" / "hidden" — skip responsive prefixed
+    // variants (e.g. md:hidden, lg:invisible) and elements that pair hidden
+    // with a responsive display class (e.g. "hidden md:flex").
+    .replace(/(?<![:\w])invisible(?![:\w])/g, '')
+    .replace(/(?<![:\w])hidden(?![:\w])/g, (match, offset, str) => {
+      // Preserve "hidden" when it's part of a responsive toggle pattern
+      // e.g. "hidden md:flex", "hidden md:block", "hidden lg:grid"
+      const surrounding = str.slice(Math.max(0, offset - 40), offset + 60);
+      if (/\b(sm|md|lg|xl|2xl):(flex|block|grid|inline|table)\b/.test(surrounding)) return match;
+      // Preserve "hidden" on elements that look like mobile-menu containers
+      if (/id="mobile-menu"/.test(surrounding)) return match;
+      return '';
+    })
+    .replace(/(?<![:\w])opacity-0(?![:\w\d])/g, 'opacity-100')
+    .replace(/(?<![:\w])opacity-10(?![:\w\d])/g, 'opacity-100')
+    .replace(/(?<![:\w])opacity-20(?![:\w\d])/g, 'opacity-100')
+    .replace(/(?<![:\w])opacity-30(?![:\w\d])/g, 'opacity-100')
+    .replace(/(?<![:\w])opacity-40(?![:\w\d])/g, 'opacity-100')
     .replace(/style="([^"]*?)display\s*:\s*none;?\s*([^"]*)"/gi, 'style="$1$2"')
     .replace(/style="([^"]*?)visibility\s*:\s*hidden;?\s*([^"]*)"/gi, 'style="$1$2"')
     .replace(/style="([^"]*?)opacity\s*:\s*0(?:\.\d+)?;?\s*([^"]*)"/gi, 'style="$1opacity: 1;$2"')
@@ -1037,13 +1078,22 @@ export async function autoFixIssues(blocks: Block[], issues: ValidationIssue[]):
       applied.push(`Rebalanced the social proof grid in ${issue.blockId}.`);
     }
 
-    if (issue.code === 'low-contrast-text' && issue.blockId) {
+    if (issue.code === 'dark-text-on-dark-bg' && issue.blockId) {
       nextBlocks = nextBlocks.map((block) =>
         block.id === issue.blockId
           ? { ...block, html: fixLowContrastText(block.html) }
           : block,
       );
       applied.push(`Fixed low-contrast dark text in ${issue.blockId} — switched to white text on colored background.`);
+    }
+
+    if (issue.code === 'light-text-on-light-bg' && issue.blockId) {
+      nextBlocks = nextBlocks.map((block) =>
+        block.id === issue.blockId
+          ? { ...block, html: fixLightTextOnLightBg(block.html) }
+          : block,
+      );
+      applied.push(`Fixed low-contrast light text in ${issue.blockId} — switched to dark text on light background.`);
     }
 
     if (issue.code === 'invisible-text' && issue.blockId) {
